@@ -1,11 +1,21 @@
 name: release
 
-# Cut a release by pushing a tag like `v0.1.0`.
+# Cut a release either by pushing a tag like `v0.1.0`, or by running this
+# workflow from `master` (Actions -> release -> Run workflow). A dispatch run
+# derives the version from the latest git tag (bumping its last component), or
+# from the `version` input if given, and creates the tag itself. Running from
+# `master` also seeds the default-branch build cache that every future tag
+# release restores.
 on:
   push:
     tags:
       - "v*"
-  workflow_dispatch: # run from `master` to warm the default-branch cache
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version (e.g. 1.4). Blank = bump the latest tag."
+        required: false
+        default: ""
 
 permissions:
   contents: write # needed to create the GitHub release
@@ -17,6 +27,8 @@ jobs:
       TARGET: x86_64-unknown-linux-gnu
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # need the full tag history to derive the next version
 
       # ---------------------------------------------------------------- backend
       - name: Install Rust toolchain
@@ -63,10 +75,34 @@ jobs:
 
           sha256sum better-vpn-*.tar.gz > SHA256SUMS.txt
 
+      # Tag push -> use the pushed tag. Dispatch -> use the `version` input if
+      # given, else bump the last component of the latest `v*` tag (v1.3 -> 1.4).
+      - name: Resolve version
+        id: version
+        shell: bash
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            ver="${GITHUB_REF_NAME#v}"
+          elif [ -n "${{ github.event.inputs.version }}" ]; then
+            ver="${{ github.event.inputs.version }}"
+            ver="${ver#v}"
+          else
+            latest=$(git tag --list 'v*' --sort=-v:refname | head -1)
+            latest="${latest#v}"
+            if [ -z "$latest" ]; then
+              ver="0.1"
+            else
+              ver="${latest%.*}.$(( ${latest##*.} + 1 ))"
+            fi
+          fi
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+          echo "Resolved version: $ver"
+
       - name: Create GitHub release
-        if: github.ref_type == 'tag' # dispatch runs only build to warm the cache
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: Release ${{ steps.version.outputs.version }}
           generate_release_notes: true
           files: |
             better-vpn-backend-x86_64-unknown-linux-gnu.tar.gz
