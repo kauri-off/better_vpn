@@ -3,9 +3,7 @@ name: release
 # Cut a release either by pushing a tag like `v0.1.0`, or by running this
 # workflow from `master` (Actions -> release -> Run workflow). A dispatch run
 # derives the version from the latest git tag (bumping its last component), or
-# from the `version` input if given, and creates the tag itself. Running from
-# `master` also seeds the default-branch build cache that every future tag
-# release restores.
+# from the `version` input if given, and creates the tag itself.
 on:
   push:
     tags:
@@ -35,9 +33,6 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-unknown-linux-gnu
-
-      - name: Cache Rust build
-        uses: Swatinem/rust-cache@v2
 
       - name: Build backend (vpn-backend + vpnctl)
         run: cargo build --release --target "$TARGET" --bin vpn-backend --bin vpnctl
