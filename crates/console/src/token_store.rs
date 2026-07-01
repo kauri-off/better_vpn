@@ -15,7 +15,10 @@ fn token_path() -> PathBuf {
     let home = std::env::var("HOME")
         .or_else(|_| std::env::var("USERPROFILE"))
         .unwrap_or_else(|_| ".".into());
-    PathBuf::from(home).join(".config").join("vpnctl").join("token")
+    PathBuf::from(home)
+        .join(".config")
+        .join("vpnctl")
+        .join("token")
 }
 
 pub fn load() -> Result<String> {
@@ -35,8 +38,7 @@ pub fn save(token: &str) -> Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).ok();
     }
-    write_token(&path, token)
-        .with_context(|| format!("writing token to {}", path.display()))?;
+    write_token(&path, token).with_context(|| format!("writing token to {}", path.display()))?;
     Ok(())
 }
 

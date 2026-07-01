@@ -44,9 +44,4 @@ diesel::table! {
 
 diesel::joinable!(online_state -> vpn_users (user_id));
 
-diesel::allow_tables_to_appear_in_same_query!(
-    admins,
-    vpn_users,
-    online_state,
-    settings,
-);
+diesel::allow_tables_to_appear_in_same_query!(admins, vpn_users, online_state, settings,);

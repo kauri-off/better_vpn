@@ -54,7 +54,10 @@ impl Ctx {
         // A stored token that still validates lets us skip straight to the menu.
         if token_store::load().is_ok() {
             if let Ok(req) = authed(pb::Empty {}) {
-                if self.call(|mut c| async move { c.who_am_i(req).await }).is_ok() {
+                if self
+                    .call(|mut c| async move { c.who_am_i(req).await })
+                    .is_ok()
+                {
                     return Ok(());
                 }
             }

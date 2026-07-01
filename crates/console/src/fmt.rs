@@ -64,7 +64,10 @@ pub fn parse_bytes(s: &str) -> Result<i64> {
         'T' => (&s[..s.len() - 1], 1024i64.pow(4)),
         _ => (s, 1),
     };
-    let n: f64 = num.trim().parse().map_err(|_| anyhow!("invalid size: {s}"))?;
+    let n: f64 = num
+        .trim()
+        .parse()
+        .map_err(|_| anyhow!("invalid size: {s}"))?;
     if !n.is_finite() || n < 0.0 {
         return Err(anyhow!("size must be a non-negative number: {s}"));
     }
@@ -89,7 +92,12 @@ pub fn print_users(users: &[pb::VpnUser]) {
         };
         println!(
             "{:>4}  {:<20} {:<8} {:<6} {:<14} {:<20}",
-            u.id, u.username, state, u.connections, usage, ts(u.expires_at)
+            u.id,
+            u.username,
+            state,
+            u.connections,
+            usage,
+            ts(u.expires_at)
         );
     }
 }
@@ -118,7 +126,10 @@ pub fn duration(secs: i64) -> String {
 pub fn print_stats(s: &pb::ServerStats) {
     println!("core running : {}", s.core_running);
     println!("core version : {}", s.core_version);
-    println!("users        : {} ({} online)", s.total_users, s.online_users);
+    println!(
+        "users        : {} ({} online)",
+        s.total_users, s.online_users
+    );
     println!("traffic up   : {}", bytes(s.total_tx));
     println!("traffic down : {}", bytes(s.total_rx));
     println!(
@@ -150,7 +161,10 @@ pub fn print_user_detail(u: &pb::VpnUser) {
     };
     println!("id          : {}", u.id);
     println!("username    : {}", u.username);
-    println!("state       : {}", if u.enabled { "enabled" } else { "disabled" });
+    println!(
+        "state       : {}",
+        if u.enabled { "enabled" } else { "disabled" }
+    );
     println!("connections : {}", u.connections);
     println!("used/quota  : {usage}");
     println!("expires     : {}", ts(u.expires_at));
@@ -177,14 +191,22 @@ pub fn print_cert(c: &pb::CertInfo) {
         println!("SANs        : {}", c.sans.join(", "));
     }
     println!("valid from  : {}", ts(c.not_before));
-    println!("valid until : {}{}", ts(c.not_after), if c.expired { "  (EXPIRED)" } else { "" });
+    println!(
+        "valid until : {}{}",
+        ts(c.not_after),
+        if c.expired { "  (EXPIRED)" } else { "" }
+    );
     println!("fingerprint : {}", c.fingerprint_sha256);
 }
 
 pub fn print_settings(s: &pb::PanelSettings) {
     println!(
         "port : {}",
-        if s.port.is_empty() { "(core listen port)" } else { &s.port }
+        if s.port.is_empty() {
+            "(core listen port)"
+        } else {
+            &s.port
+        }
     );
     println!(
         "sni  : {}",

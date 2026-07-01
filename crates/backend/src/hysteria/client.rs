@@ -31,7 +31,11 @@ impl StatsClient {
             .timeout(Duration::from_secs(5))
             .build()
             .expect("reqwest client");
-        Self { http, base: base.trim_end_matches('/').to_string(), secret }
+        Self {
+            http,
+            base: base.trim_end_matches('/').to_string(),
+            secret,
+        }
     }
 
     fn req(&self, method: reqwest::Method, path: &str) -> reqwest::RequestBuilder {
@@ -46,7 +50,11 @@ impl StatsClient {
     /// Fetch and (with `clear`) reset per-user traffic counters. Returns a map
     /// of Hysteria client id -> cumulative-since-last-clear bytes.
     pub async fn traffic(&self, clear: bool) -> anyhow::Result<HashMap<String, Traffic>> {
-        let path = if clear { "/traffic?clear=1" } else { "/traffic" };
+        let path = if clear {
+            "/traffic?clear=1"
+        } else {
+            "/traffic"
+        };
         let resp = self.req(reqwest::Method::GET, path).send().await?;
         let resp = resp.error_for_status()?;
         Ok(resp.json().await?)

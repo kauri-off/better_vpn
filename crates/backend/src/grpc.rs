@@ -10,11 +10,11 @@ use crate::settings::Settings;
 use crate::state::AppState;
 use chrono::{DateTime, TimeZone, Utc};
 use percent_encoding::{utf8_percent_encode, AsciiSet, NON_ALPHANUMERIC};
+use qrcode::render::svg;
+use qrcode::QrCode;
 use std::path::Path;
 use std::pin::Pin;
 use std::time::Duration;
-use qrcode::render::svg;
-use qrcode::QrCode;
 use tokio_stream::{wrappers::ReceiverStream, Stream};
 use tonic::{Request, Response, Status};
 use vpn_common::settings_keys as k;
@@ -93,12 +93,22 @@ fn build_users_response(
     state: &AppState,
     req: &pb::ListUsersRequest,
 ) -> Result<pb::ListUsersResponse, Status> {
-    let limit = if req.limit <= 0 { 100 } else { req.limit as i64 };
+    let limit = if req.limit <= 0 {
+        100
+    } else {
+        req.limit as i64
+    };
     let mut conn = state.pool.get().map_err(db_err)?;
     let (rows, total) =
         queries::list_users(&mut conn, &req.search, limit, req.offset as i64).map_err(db_err)?;
-    let users = rows.into_iter().map(|u| to_proto_user(u, &mut conn)).collect();
-    Ok(pb::ListUsersResponse { users, total: total as i32 })
+    let users = rows
+        .into_iter()
+        .map(|u| to_proto_user(u, &mut conn))
+        .collect();
+    Ok(pb::ListUsersResponse {
+        users,
+        total: total as i32,
+    })
 }
 
 /// Assemble the current `ServerStats` snapshot. Shared by the unary
@@ -151,7 +161,11 @@ impl PanelSvc {
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             let detail = stderr.trim();
-            let detail = if detail.is_empty() { "systemctl restart failed" } else { detail };
+            let detail = if detail.is_empty() {
+                "systemctl restart failed"
+            } else {
+                detail
+            };
             return Err(Status::internal(format!("restart {unit} failed: {detail}")));
         }
         tracing::info!("restarted core unit {unit} from panel");
@@ -177,12 +191,20 @@ impl PanelSvc {
         // borrows the core's listen port.
         let host = {
             let h = host_only(link_host);
-            if h.is_empty() { self.state.sys.snapshot().ipv4 } else { h }
+            if h.is_empty() {
+                self.state.sys.snapshot().ipv4
+            } else {
+                h
+            }
         };
         let port = {
             let p = Settings::port(&self.state.pool);
             let p = p.trim();
-            if p.is_empty() { listen_port(&sc.listen).to_string() } else { p.to_string() }
+            if p.is_empty() {
+                listen_port(&sc.listen).to_string()
+            } else {
+                p.to_string()
+            }
         };
         let address = format!("{host}:{port}");
 
@@ -310,7 +332,10 @@ mod uri_tests {
             utf8_percent_encode("my pass#1", URI_COMPONENT).to_string(),
             "my%20pass%231"
         );
-        assert_eq!(utf8_percent_encode("a.b-c_d~e", URI_COMPONENT).to_string(), "a.b-c_d~e");
+        assert_eq!(
+            utf8_percent_encode("a.b-c_d~e", URI_COMPONENT).to_string(),
+            "a.b-c_d~e"
+        );
     }
 
     #[test]
@@ -353,7 +378,10 @@ impl PanelService for PanelSvc {
             .keys
             .issue(admin.id, &admin.username)
             .map_err(|e| Status::internal(e.to_string()))?;
-        Ok(Response::new(pb::LoginResponse { token, expires_at: exp }))
+        Ok(Response::new(pb::LoginResponse {
+            token,
+            expires_at: exp,
+        }))
     }
 
     async fn who_am_i(&self, request: Request<pb::Empty>) -> Result<Response<pb::Admin>, Status> {
@@ -376,7 +404,8 @@ impl PanelService for PanelSvc {
         Ok(Response::new(build_users_response(&self.state, &req)?))
     }
 
-    type StreamUsersStream = Pin<Box<dyn Stream<Item = Result<pb::ListUsersResponse, Status>> + Send>>;
+    type StreamUsersStream =
+        Pin<Box<dyn Stream<Item = Result<pb::ListUsersResponse, Status>> + Send>>;
 
     async fn stream_users(
         &self,
@@ -420,7 +449,8 @@ impl PanelService for PanelSvc {
         check_auth(&self.state.keys, &request)?;
         let id = request.into_inner().id;
         let mut conn = self.state.pool.get().map_err(db_err)?;
-        let u = queries::user_by_id(&mut conn, id).map_err(|_| Status::not_found("user not found"))?;
+        let u =
+            queries::user_by_id(&mut conn, id).map_err(|_| Status::not_found("user not found"))?;
         Ok(Response::new(to_proto_user(u, &mut conn)))
     }
 
@@ -466,7 +496,8 @@ impl PanelService for PanelSvc {
         let req = request.into_inner();
         let id = req.id;
         let mut conn = self.state.pool.get().map_err(db_err)?;
-        let u = queries::user_by_id(&mut conn, id).map_err(|_| Status::not_found("user not found"))?;
+        let u =
+            queries::user_by_id(&mut conn, id).map_err(|_| Status::not_found("user not found"))?;
         // Legacy users predating token storage have no recoverable token; return
         // an empty config so the UI can explain instead of erroring.
         let (auth_token, connection_uri, qr_svg) = match u.token {
@@ -522,7 +553,8 @@ impl PanelService for PanelSvc {
         check_auth(&self.state.keys, &request)?;
         let id = request.into_inner().id;
         let mut conn = self.state.pool.get().map_err(db_err)?;
-        let u = queries::user_by_id(&mut conn, id).map_err(|_| Status::not_found("user not found"))?;
+        let u =
+            queries::user_by_id(&mut conn, id).map_err(|_| Status::not_found("user not found"))?;
         drop(conn);
         self.state
             .stats_client()
@@ -604,10 +636,9 @@ impl PanelService for PanelSvc {
     ) -> Result<Response<pb::UpdateCoreResponse>, Status> {
         check_auth(&self.state.keys, &request)?;
         let url = Settings::core_download_url(&self.state.pool);
-        let version =
-            crate::hysteria::core::update(&self.state.config.core_bin, &url).await.map_err(|e| {
-                Status::internal(format!("core update failed: {e:#}"))
-            })?;
+        let version = crate::hysteria::core::update(&self.state.config.core_bin, &url)
+            .await
+            .map_err(|e| Status::internal(format!("core update failed: {e:#}")))?;
         tracing::info!("updated core binary to {version} from panel");
         // Restart the service so the running process is the new binary.
         self.restart_unit().await?;
@@ -621,8 +652,12 @@ impl PanelService for PanelSvc {
     ) -> Result<Response<pb::ConfigResponse>, Status> {
         check_auth(&self.state.keys, &request)?;
         let mgr = ConfigManager::new(Settings::core_config(&self.state.pool));
-        let raw = mgr.read_raw().map_err(|e| Status::internal(e.to_string()))?;
-        let sc = mgr.structured_view().map_err(|e| Status::internal(e.to_string()))?;
+        let raw = mgr
+            .read_raw()
+            .map_err(|e| Status::internal(e.to_string()))?;
+        let sc = mgr
+            .structured_view()
+            .map_err(|e| Status::internal(e.to_string()))?;
         Ok(Response::new(pb::ConfigResponse {
             raw_yaml: raw,
             structured: Some(structured_to_proto(&sc)),
@@ -642,8 +677,12 @@ impl PanelService for PanelSvc {
         let reasserted = mgr
             .apply_structured(&sc, &managed)
             .map_err(|e| Status::invalid_argument(e.to_string()))?;
-        let raw = mgr.read_raw().map_err(|e| Status::internal(e.to_string()))?;
-        let view = mgr.structured_view().map_err(|e| Status::internal(e.to_string()))?;
+        let raw = mgr
+            .read_raw()
+            .map_err(|e| Status::internal(e.to_string()))?;
+        let view = mgr
+            .structured_view()
+            .map_err(|e| Status::internal(e.to_string()))?;
         Ok(Response::new(pb::ConfigResponse {
             raw_yaml: raw,
             structured: Some(structured_to_proto(&view)),
@@ -662,8 +701,12 @@ impl PanelService for PanelSvc {
         let reasserted = mgr
             .apply_raw(&raw_in, &managed)
             .map_err(|e| Status::invalid_argument(e.to_string()))?;
-        let raw = mgr.read_raw().map_err(|e| Status::internal(e.to_string()))?;
-        let view = mgr.structured_view().map_err(|e| Status::internal(e.to_string()))?;
+        let raw = mgr
+            .read_raw()
+            .map_err(|e| Status::internal(e.to_string()))?;
+        let view = mgr
+            .structured_view()
+            .map_err(|e| Status::internal(e.to_string()))?;
         Ok(Response::new(pb::ConfigResponse {
             raw_yaml: raw,
             structured: Some(structured_to_proto(&view)),
@@ -683,7 +726,9 @@ impl PanelService for PanelSvc {
         let (cert_path, key_path) =
             resolve_cert_paths(&core_config, &sc.tls_cert, &sc.tls_key, "", "");
         let summary = cert::inspect(&cert_path);
-        Ok(Response::new(cert_summary_to_proto(&summary, &cert_path, &key_path)))
+        Ok(Response::new(cert_summary_to_proto(
+            &summary, &cert_path, &key_path,
+        )))
     }
 
     async fn generate_cert(
@@ -716,13 +761,24 @@ impl PanelService for PanelSvc {
                 sans.first().cloned().unwrap_or_else(|| "vpn".to_string())
             }
         };
-        let validity_days = if req.validity_days <= 0 { 3650 } else { req.validity_days as u32 };
+        let validity_days = if req.validity_days <= 0 {
+            3650
+        } else {
+            req.validity_days as u32
+        };
 
         let core_config = Settings::core_config(&self.state.pool);
         let mgr = ConfigManager::new(&core_config);
-        let mut sc = mgr.structured_view().map_err(|e| Status::internal(e.to_string()))?;
-        let (cert_path, key_path) =
-            resolve_cert_paths(&core_config, &sc.tls_cert, &sc.tls_key, &req.cert_path, &req.key_path);
+        let mut sc = mgr
+            .structured_view()
+            .map_err(|e| Status::internal(e.to_string()))?;
+        let (cert_path, key_path) = resolve_cert_paths(
+            &core_config,
+            &sc.tls_cert,
+            &sc.tls_key,
+            &req.cert_path,
+            &req.key_path,
+        );
         // The destination is admin-controlled, but reject path traversal /
         // relative paths so a malformed override can't clobber a file outside
         // an intended absolute location.
@@ -742,7 +798,9 @@ impl PanelService for PanelSvc {
             .map_err(|e| Status::internal(format!("updating config: {e}")))?;
 
         let summary = cert::inspect(&cert_path);
-        Ok(Response::new(cert_summary_to_proto(&summary, &cert_path, &key_path)))
+        Ok(Response::new(cert_summary_to_proto(
+            &summary, &cert_path, &key_path,
+        )))
     }
 
     async fn get_settings(
@@ -823,7 +881,11 @@ fn validate_cert_dest(p: &str) -> Result<(), String> {
 }
 
 fn first_non_empty(candidates: &[&str]) -> Option<String> {
-    candidates.iter().map(|s| s.trim()).find(|s| !s.is_empty()).map(String::from)
+    candidates
+        .iter()
+        .map(|s| s.trim())
+        .find(|s| !s.is_empty())
+        .map(String::from)
 }
 
 fn cert_summary_to_proto(s: &cert::CertSummary, cert_path: &str, key_path: &str) -> pb::CertInfo {
@@ -846,7 +908,10 @@ fn cert_summary_to_proto(s: &cert::CertSummary, cert_path: &str, key_path: &str)
 fn structured_to_proto(sc: &StructuredConfig) -> pb::HysteriaConfig {
     pb::HysteriaConfig {
         listen: sc.listen.clone(),
-        tls: Some(pb::TlsConfig { cert: sc.tls_cert.clone(), key: sc.tls_key.clone() }),
+        tls: Some(pb::TlsConfig {
+            cert: sc.tls_cert.clone(),
+            key: sc.tls_key.clone(),
+        }),
         obfs: Some(pb::ObfsConfig {
             r#type: sc.obfs_type.clone(),
             password: sc.obfs_password.clone(),

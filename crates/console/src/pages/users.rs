@@ -18,8 +18,14 @@ pub fn page(ctx: &mut Ctx) {
 }
 
 fn list(ctx: &mut Ctx) {
-    let Ok(search) = ui::input("search (blank = all)") else { return };
-    let Some(req) = ui::report(authed(pb::ListUsersRequest { search, limit: 0, offset: 0 })) else {
+    let Ok(search) = ui::input("search (blank = all)") else {
+        return;
+    };
+    let Some(req) = ui::report(authed(pb::ListUsersRequest {
+        search,
+        limit: 0,
+        offset: 0,
+    })) else {
         return;
     };
     let Some(resp) = ui::report(ctx.call(|mut c| async move { c.list_users(req).await })) else {
@@ -59,7 +65,10 @@ fn list(ctx: &mut Ctx) {
 
 fn detail(ctx: &mut Ctx, id: i32) {
     loop {
-        let Some(req) = ui::report(authed(pb::GetUserRequest { id, link_host: String::new() })) else {
+        let Some(req) = ui::report(authed(pb::GetUserRequest {
+            id,
+            link_host: String::new(),
+        })) else {
             return;
         };
         let Some(u) = ui::report(ctx.call(|mut c| async move { c.get_user(req).await })) else {
@@ -103,7 +112,9 @@ fn set_enabled(ctx: &mut Ctx, id: i32, enabled: bool) {
         quota_bytes: None,
         note: None,
     };
-    let Some(req) = ui::report(authed(msg)) else { return };
+    let Some(req) = ui::report(authed(msg)) else {
+        return;
+    };
     if ui::report(ctx.call(|mut c| async move { c.update_user(req).await })).is_some() {
         ui::success(format!(
             "user #{id} {}",
@@ -121,32 +132,54 @@ fn edit(ctx: &mut Ctx, id: i32) {
         Err(e) => return ui::error(e),
     };
 
-    let Ok(quota_s) = ui::input("quota (blank = unchanged; 0 / 50G / 500M)") else { return };
+    let Ok(quota_s) = ui::input("quota (blank = unchanged; 0 / 50G / 500M)") else {
+        return;
+    };
     let quota_bytes = match parse_opt(&quota_s, fmt::parse_bytes) {
         Ok(v) => v,
         Err(e) => return ui::error(e),
     };
 
-    let Ok(note_s) = ui::input("note (blank = unchanged)") else { return };
-    let note = if note_s.trim().is_empty() { None } else { Some(note_s) };
+    let Ok(note_s) = ui::input("note (blank = unchanged)") else {
+        return;
+    };
+    let note = if note_s.trim().is_empty() {
+        None
+    } else {
+        Some(note_s)
+    };
 
     if expires_at.is_none() && quota_bytes.is_none() && note.is_none() {
         println!("nothing to change.");
         return;
     }
 
-    let msg = pb::UpdateUserRequest { id, enabled: None, expires_at, quota_bytes, note };
-    let Some(req) = ui::report(authed(msg)) else { return };
+    let msg = pb::UpdateUserRequest {
+        id,
+        enabled: None,
+        expires_at,
+        quota_bytes,
+        note,
+    };
+    let Some(req) = ui::report(authed(msg)) else {
+        return;
+    };
     if let Some(u) = ui::report(ctx.call(|mut c| async move { c.update_user(req).await })) {
         ui::success(format!("updated user #{} '{}'", u.id, u.username));
     }
 }
 
 fn reset(ctx: &mut Ctx, id: i32) {
-    if !matches!(ui::confirm(&format!("reset usage counter for #{id}?")), Ok(true)) {
+    if !matches!(
+        ui::confirm(&format!("reset usage counter for #{id}?")),
+        Ok(true)
+    ) {
         return;
     }
-    let Some(req) = ui::report(authed(pb::GetUserRequest { id, link_host: String::new() })) else {
+    let Some(req) = ui::report(authed(pb::GetUserRequest {
+        id,
+        link_host: String::new(),
+    })) else {
         return;
     };
     if let Some(u) = ui::report(ctx.call(|mut c| async move { c.reset_user_usage(req).await })) {
@@ -155,10 +188,16 @@ fn reset(ctx: &mut Ctx, id: i32) {
 }
 
 fn kick(ctx: &mut Ctx, id: i32) {
-    if !matches!(ui::confirm(&format!("kick active sessions for #{id}?")), Ok(true)) {
+    if !matches!(
+        ui::confirm(&format!("kick active sessions for #{id}?")),
+        Ok(true)
+    ) {
         return;
     }
-    let Some(req) = ui::report(authed(pb::GetUserRequest { id, link_host: String::new() })) else {
+    let Some(req) = ui::report(authed(pb::GetUserRequest {
+        id,
+        link_host: String::new(),
+    })) else {
         return;
     };
     if ui::report(ctx.call(|mut c| async move { c.kick_user(req).await })).is_some() {
@@ -168,10 +207,16 @@ fn kick(ctx: &mut Ctx, id: i32) {
 
 /// Returns true if the user was deleted (so the detail loop should exit).
 fn delete(ctx: &mut Ctx, id: i32) -> bool {
-    if !matches!(ui::confirm(&format!("permanently delete user #{id}?")), Ok(true)) {
+    if !matches!(
+        ui::confirm(&format!("permanently delete user #{id}?")),
+        Ok(true)
+    ) {
         return false;
     }
-    let Some(req) = ui::report(authed(pb::GetUserRequest { id, link_host: String::new() })) else {
+    let Some(req) = ui::report(authed(pb::GetUserRequest {
+        id,
+        link_host: String::new(),
+    })) else {
         return false;
     };
     if ui::report(ctx.call(|mut c| async move { c.delete_user(req).await })).is_some() {
@@ -182,7 +227,10 @@ fn delete(ctx: &mut Ctx, id: i32) -> bool {
 }
 
 fn share(ctx: &mut Ctx, id: i32) {
-    let Some(req) = ui::report(authed(pb::GetUserRequest { id, link_host: String::new() })) else {
+    let Some(req) = ui::report(authed(pb::GetUserRequest {
+        id,
+        link_host: String::new(),
+    })) else {
         return;
     };
     let Some(cfg) = ui::report(ctx.call(|mut c| async move { c.get_user_config(req).await }))
@@ -190,7 +238,10 @@ fn share(ctx: &mut Ctx, id: i32) {
         return;
     };
     if cfg.connection_uri.is_empty() {
-        println!("no stored token for '{}' (legacy user); nothing to share.", cfg.username);
+        println!(
+            "no stored token for '{}' (legacy user); nothing to share.",
+            cfg.username
+        );
         ui::pause();
         return;
     }
@@ -198,7 +249,9 @@ fn share(ctx: &mut Ctx, id: i32) {
 }
 
 fn create(ctx: &mut Ctx) {
-    let Ok(username) = ui::input_required("username") else { return };
+    let Ok(username) = ui::input_required("username") else {
+        return;
+    };
     let Ok(expires_s) = ui::input_default("expires (never / <N>d / timestamp)", "never") else {
         return;
     };
@@ -206,13 +259,19 @@ fn create(ctx: &mut Ctx) {
         Ok(v) => v,
         Err(e) => return ui::error(e),
     };
-    let Ok(quota_s) = ui::input_default("quota (0 = unlimited, e.g. 50G)", "0") else { return };
+    let Ok(quota_s) = ui::input_default("quota (0 = unlimited, e.g. 50G)", "0") else {
+        return;
+    };
     let quota_bytes = match fmt::parse_bytes(&quota_s) {
         Ok(v) => v,
         Err(e) => return ui::error(e),
     };
-    let Ok(note) = ui::input("note (optional)") else { return };
-    let Ok(enabled) = ui::confirm_default("enabled?", true) else { return };
+    let Ok(note) = ui::input("note (optional)") else {
+        return;
+    };
+    let Ok(enabled) = ui::confirm_default("enabled?", true) else {
+        return;
+    };
 
     let msg = pb::CreateUserRequest {
         username,
@@ -222,7 +281,9 @@ fn create(ctx: &mut Ctx) {
         enabled,
         link_host: String::new(),
     };
-    let Some(req) = ui::report(authed(msg)) else { return };
+    let Some(req) = ui::report(authed(msg)) else {
+        return;
+    };
     let Some(resp) = ui::report(ctx.call(|mut c| async move { c.create_user(req).await })) else {
         return;
     };

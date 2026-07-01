@@ -7,7 +7,9 @@ use crate::{fmt, ui};
 
 pub fn page(ctx: &mut Ctx) {
     loop {
-        let Some(req) = ui::report(authed(pb::Empty {})) else { return };
+        let Some(req) = ui::report(authed(pb::Empty {})) else {
+            return;
+        };
         let Some(s) = ui::report(ctx.call(|mut c| async move { c.get_server_stats(req).await }))
         else {
             return;

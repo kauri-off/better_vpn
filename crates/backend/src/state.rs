@@ -47,8 +47,9 @@ impl AppState {
         if let Some(v) = self.core_version.read().await.as_ref() {
             return v.clone();
         }
-        let detected =
-            crate::hysteria::core::detect_version(&self.config.core_bin).await.unwrap_or_default();
+        let detected = crate::hysteria::core::detect_version(&self.config.core_bin)
+            .await
+            .unwrap_or_default();
         *self.core_version.write().await = Some(detected.clone());
         detected
     }
@@ -65,6 +66,9 @@ impl AppState {
 
     /// Build a Traffic Stats API client from current settings.
     pub fn stats_client(&self) -> StatsClient {
-        StatsClient::new(Settings::stats_url(&self.pool), Settings::stats_secret(&self.pool))
+        StatsClient::new(
+            Settings::stats_url(&self.pool),
+            Settings::stats_secret(&self.pool),
+        )
     }
 }

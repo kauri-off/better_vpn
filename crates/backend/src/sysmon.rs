@@ -38,7 +38,9 @@ pub struct SysMonitor {
 
 impl SysMonitor {
     pub fn new() -> Self {
-        Self { inner: Arc::new(Mutex::new(SysSnapshot::default())) }
+        Self {
+            inner: Arc::new(Mutex::new(SysSnapshot::default())),
+        }
     }
 
     /// Latest sampled metrics. Returns a zeroed snapshot until the first tick.

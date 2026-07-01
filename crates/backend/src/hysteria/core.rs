@@ -16,7 +16,10 @@ use anyhow::{bail, Context};
 /// empty / `Unknown` version (a core not built with release ldflags).
 pub async fn detect_version(bin: &str) -> Option<String> {
     let run = tokio::process::Command::new(bin).arg("version").output();
-    let out = tokio::time::timeout(Duration::from_secs(5), run).await.ok()?.ok()?;
+    let out = tokio::time::timeout(Duration::from_secs(5), run)
+        .await
+        .ok()?
+        .ok()?;
     if !out.status.success() {
         return None;
     }
@@ -77,7 +80,10 @@ pub async fn update(bin: &str, url: &str) -> anyhow::Result<String> {
         .with_context(|| format!("downloading core from {url}"))?;
     let bytes = resp.bytes().await.context("reading core download body")?;
     if bytes.len() < 1024 {
-        bail!("downloaded core is implausibly small ({} bytes)", bytes.len());
+        bail!(
+            "downloaded core is implausibly small ({} bytes)",
+            bytes.len()
+        );
     }
 
     // Write to the temp file and mark it executable.
@@ -97,9 +103,13 @@ pub async fn update(bin: &str, url: &str) -> anyhow::Result<String> {
 
     // Atomic replace. Renaming over a running binary is safe on Linux: the
     // running process keeps the old inode until it is restarted.
-    tokio::fs::rename(&tmp, bin_path)
-        .await
-        .with_context(|| format!("replacing {} (is {} writable?)", bin_path.display(), dir.display()))?;
+    tokio::fs::rename(&tmp, bin_path).await.with_context(|| {
+        format!(
+            "replacing {} (is {} writable?)",
+            bin_path.display(),
+            dir.display()
+        )
+    })?;
 
     Ok(version)
 }

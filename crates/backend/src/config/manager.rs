@@ -100,7 +100,11 @@ impl ConfigManager {
                 set_nested(m, &["masquerade", "proxy", "url"], &sc.masquerade_proxy_url);
             }
             if !sc.masquerade_string_content.is_empty() {
-                set_nested(m, &["masquerade", "string", "content"], &sc.masquerade_string_content);
+                set_nested(
+                    m,
+                    &["masquerade", "string", "content"],
+                    &sc.masquerade_string_content,
+                );
             }
         }
 
@@ -189,7 +193,10 @@ fn strip_bom(s: &str) -> &str {
 // ---------------- YAML mapping helpers ----------------
 
 fn get_str(m: &Mapping, key: &str) -> String {
-    m.get(Value::from(key)).and_then(|v| v.as_str()).unwrap_or("").to_string()
+    m.get(Value::from(key))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string()
 }
 
 fn nested_str(m: &Mapping, path: &[&str]) -> String {

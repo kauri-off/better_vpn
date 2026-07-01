@@ -88,10 +88,17 @@ fn main_menu(ctx: &mut Ctx) {
 }
 
 fn whoami(ctx: &mut Ctx) {
-    let Some(req) = ui::report(authed(pb::Empty {})) else { return };
+    let Some(req) = ui::report(authed(pb::Empty {})) else {
+        return;
+    };
     if let Some(a) = ui::report(ctx.call(|mut c| async move { c.who_am_i(req).await })) {
         ui::header("Whoami");
-        println!("#{} {}  (since {})", a.id, a.username, fmt::ts(a.created_at));
+        println!(
+            "#{} {}  (since {})",
+            a.id,
+            a.username,
+            fmt::ts(a.created_at)
+        );
         ui::pause();
     }
 }

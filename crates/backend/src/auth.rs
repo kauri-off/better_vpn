@@ -5,7 +5,9 @@
 //! `login` must stay unauthenticated, so the check is applied explicitly in
 //! each authenticated handler rather than structurally.
 
-use argon2::password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
+use argon2::password_hash::{
+    rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString,
+};
 use argon2::Argon2;
 use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
@@ -14,9 +16,9 @@ const TOKEN_TTL_SECS: i64 = 60 * 60 * 12; // 12h
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
-    pub sub: i32,       // admin id
+    pub sub: i32, // admin id
     pub username: String,
-    pub exp: i64,       // unix seconds
+    pub exp: i64, // unix seconds
 }
 
 #[derive(Clone)]
@@ -35,7 +37,11 @@ impl AuthKeys {
 
     pub fn issue(&self, admin_id: i32, username: &str) -> anyhow::Result<(String, i64)> {
         let exp = chrono::Utc::now().timestamp() + TOKEN_TTL_SECS;
-        let claims = Claims { sub: admin_id, username: username.to_string(), exp };
+        let claims = Claims {
+            sub: admin_id,
+            username: username.to_string(),
+            exp,
+        };
         let token = encode(&Header::new(Algorithm::HS256), &claims, &self.encoding)?;
         Ok((token, exp))
     }

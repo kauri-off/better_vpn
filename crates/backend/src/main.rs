@@ -92,8 +92,7 @@ enum AdminAction {
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "info".into()),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
         )
         .init();
 
@@ -106,7 +105,9 @@ async fn main() -> anyhow::Result<()> {
     vpn_db::run_migrations(&pool)?;
 
     match cli.command.unwrap_or(Command::Serve) {
-        Command::Admin { action: AdminAction::Create { username, password } } => {
+        Command::Admin {
+            action: AdminAction::Create { username, password },
+        } => {
             let mut conn = pool.get()?;
             let hash = auth::hash_password(&password)?;
             let admin = queries::create_admin(&mut conn, &username, &hash)?;
@@ -159,9 +160,13 @@ async fn serve(cfg: AppConfig, pool: vpn_db::DbPool) -> anyhow::Result<()> {
     let auth_addr: SocketAddr = cfg.auth_addr.parse()?;
     let auth_router = hysteria::auth::router(state.clone());
     let auth_handle = tokio::spawn(async move {
-        let listener = tokio::net::TcpListener::bind(auth_addr).await.expect("bind auth addr");
+        let listener = tokio::net::TcpListener::bind(auth_addr)
+            .await
+            .expect("bind auth addr");
         tracing::info!("hysteria auth backend listening on http://{auth_addr}/auth");
-        axum::serve(listener, auth_router).await.expect("auth server");
+        axum::serve(listener, auth_router)
+            .await
+            .expect("auth server");
     });
 
     // gRPC + gRPC-Web management API on GRPC_ADDR.

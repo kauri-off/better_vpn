@@ -30,11 +30,19 @@ pub struct AuthResponse {
 }
 
 pub fn router(state: AppState) -> Router {
-    Router::new().route("/auth", post(handle_auth)).with_state(state)
+    Router::new()
+        .route("/auth", post(handle_auth))
+        .with_state(state)
 }
 
-async fn handle_auth(State(state): State<AppState>, Json(req): Json<AuthRequest>) -> Json<AuthResponse> {
-    let deny = Json(AuthResponse { ok: false, id: String::new() });
+async fn handle_auth(
+    State(state): State<AppState>,
+    Json(req): Json<AuthRequest>,
+) -> Json<AuthResponse> {
+    let deny = Json(AuthResponse {
+        ok: false,
+        id: String::new(),
+    });
 
     let token_hash = hash_token(&req.auth);
     let mut conn = match state.pool.get() {
@@ -66,5 +74,8 @@ async fn handle_auth(State(state): State<AppState>, Json(req): Json<AuthRequest>
         return deny;
     }
 
-    Json(AuthResponse { ok: true, id: user.username })
+    Json(AuthResponse {
+        ok: true,
+        id: user.username,
+    })
 }

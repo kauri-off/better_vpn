@@ -20,9 +20,16 @@ pub fn admin_count(conn: &mut DbConn) -> Result<i64, DbError> {
     Ok(admins::table.count().get_result(conn)?)
 }
 
-pub fn create_admin(conn: &mut DbConn, username: &str, password_hash: &str) -> Result<Admin, DbError> {
+pub fn create_admin(
+    conn: &mut DbConn,
+    username: &str,
+    password_hash: &str,
+) -> Result<Admin, DbError> {
     Ok(diesel::insert_into(admins::table)
-        .values(NewAdmin { username, password_hash })
+        .values(NewAdmin {
+            username,
+            password_hash,
+        })
         .returning(Admin::as_returning())
         .get_result(conn)?)
 }
@@ -95,7 +102,11 @@ pub fn create_user(conn: &mut DbConn, new: NewVpnUser<'_>) -> Result<VpnUser, Db
         .get_result(conn)?)
 }
 
-pub fn update_user(conn: &mut DbConn, id: i32, changes: VpnUserChanges) -> Result<VpnUser, DbError> {
+pub fn update_user(
+    conn: &mut DbConn,
+    id: i32,
+    changes: VpnUserChanges,
+) -> Result<VpnUser, DbError> {
     Ok(diesel::update(vpn_users::table.find(id))
         .set(changes)
         .returning(VpnUser::as_returning())
@@ -193,7 +204,6 @@ pub fn online_count(conn: &mut DbConn) -> Result<i64, DbError> {
         .get_result(conn)?)
 }
 
-
 // ---------------- settings ----------------
 
 pub fn get_setting(conn: &mut DbConn, key: &str) -> Result<Option<String>, DbError> {
@@ -206,7 +216,10 @@ pub fn get_setting(conn: &mut DbConn, key: &str) -> Result<Option<String>, DbErr
 
 pub fn set_setting(conn: &mut DbConn, key: &str, value: &str) -> Result<(), DbError> {
     diesel::insert_into(settings::table)
-        .values(Setting { key: key.to_string(), value: value.to_string() })
+        .values(Setting {
+            key: key.to_string(),
+            value: value.to_string(),
+        })
         .on_conflict(settings::key)
         .do_update()
         .set(settings::value.eq(value))

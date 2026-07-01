@@ -56,7 +56,9 @@ pub fn generate_self_signed(
     params.not_after = now + time::Duration::days(validity_days as i64);
 
     let key_pair = KeyPair::generate_for(&PKCS_ED25519).context("generating Ed25519 key")?;
-    let cert = params.self_signed(&key_pair).context("self-signing certificate")?;
+    let cert = params
+        .self_signed(&key_pair)
+        .context("self-signing certificate")?;
 
     Ok((cert.pem(), key_pair.serialize_pem()))
 }
@@ -69,7 +71,10 @@ pub fn inspect(cert_path: &str) -> CertSummary {
         Ok(d) => d,
         Err(_) => return CertSummary::default(),
     };
-    let mut summary = CertSummary { exists: true, ..Default::default() };
+    let mut summary = CertSummary {
+        exists: true,
+        ..Default::default()
+    };
     if let Some(pin) = cert_pin_sha256(cert_path) {
         summary.fingerprint_sha256 = pin;
     }
@@ -261,7 +266,11 @@ mod tests {
 
         let info = inspect(cert_path.to_str().unwrap());
         assert!(info.exists);
-        assert!(info.parse_error.is_empty(), "parse error: {}", info.parse_error);
+        assert!(
+            info.parse_error.is_empty(),
+            "parse error: {}",
+            info.parse_error
+        );
         assert_eq!(info.subject_cn, "vpn");
         // SANs round-trip (IP classified as IP, name as DNS).
         assert!(info.sans.contains(&"10.0.0.5".to_string()));
@@ -269,7 +278,10 @@ mod tests {
         assert!(!info.expired);
         // ~3650 days of validity (allow a day of slack).
         let span_days = (info.not_after - info.not_before) / 86_400;
-        assert!((3649..=3651).contains(&span_days), "span_days = {span_days}");
+        assert!(
+            (3649..=3651).contains(&span_days),
+            "span_days = {span_days}"
+        );
         assert!(!info.fingerprint_sha256.is_empty());
 
         std::fs::remove_dir_all(&dir).ok();

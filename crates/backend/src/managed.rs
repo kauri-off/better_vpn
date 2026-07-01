@@ -41,9 +41,21 @@ mod tests {
 
     #[test]
     fn strips_scheme_and_path() {
-        assert_eq!(stats_listen_from_url("http://127.0.0.1:9999"), "127.0.0.1:9999");
-        assert_eq!(stats_listen_from_url("https://127.0.0.1:9999/"), "127.0.0.1:9999");
-        assert_eq!(stats_listen_from_url("http://127.0.0.1:9999/metrics"), "127.0.0.1:9999");
-        assert_eq!(stats_listen_from_url("127.0.0.1:9999/x?y#z"), "127.0.0.1:9999");
+        assert_eq!(
+            stats_listen_from_url("http://127.0.0.1:9999"),
+            "127.0.0.1:9999"
+        );
+        assert_eq!(
+            stats_listen_from_url("https://127.0.0.1:9999/"),
+            "127.0.0.1:9999"
+        );
+        assert_eq!(
+            stats_listen_from_url("http://127.0.0.1:9999/metrics"),
+            "127.0.0.1:9999"
+        );
+        assert_eq!(
+            stats_listen_from_url("127.0.0.1:9999/x?y#z"),
+            "127.0.0.1:9999"
+        );
     }
 }
