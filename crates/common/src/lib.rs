@@ -14,6 +14,9 @@ pub enum CommonError {
 /// Settings keys persisted in the `settings` table.
 pub mod settings_keys {
     pub const STATS_SECRET: &str = "stats_secret";
+    // Admin session (JWT) signing secret. Generated and persisted on first run
+    // unless overridden by the JWT_SECRET env var.
+    pub const JWT_SECRET: &str = "jwt_secret";
     pub const STATS_URL: &str = "stats_url";
     pub const CORE_CONFIG: &str = "core_config";
     // Optional override of the core release asset URL for panel-driven updates.

@@ -32,7 +32,7 @@ use vpn_proto::panel::panel_service_server::PanelServiceServer;
 #[derive(Parser)]
 #[command(name = "vpn-backend", version)]
 struct Cli {
-    /// Load environment (DATABASE_URL, JWT_SECRET, ...) from this file before
+    /// Load environment (DATABASE_URL, GRPC_ADDR, ...) from this file before
     /// running, so bootstrap commands don't need it exported. Lines are
     /// `KEY=VALUE`; blanks and `#` comments are ignored. Variables already set
     /// in the real environment are left untouched.

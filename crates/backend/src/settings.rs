@@ -58,6 +58,42 @@ impl Settings {
         }
     }
 
+    /// Return the admin session (JWT) signing secret, generating and persisting
+    /// one in the DB on first use. Unlike the stats secret, a signing key must
+    /// never be empty, so if the DB is unreachable we fall back to a
+    /// process-ephemeral secret (existing sessions won't survive the restart)
+    /// rather than signing with a blank key.
+    pub fn ensure_jwt_secret(pool: &DbPool) -> String {
+        let existing = Self::get_or(pool, k::JWT_SECRET, "");
+        if !existing.is_empty() {
+            return existing;
+        }
+        let secret = vpn_common::token::generate_token();
+        let mut conn = match pool.get() {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::warn!(
+                    "could not get a DB connection to persist the JWT secret ({e}); \
+                     using an ephemeral one (sessions won't survive a restart)"
+                );
+                return secret;
+            }
+        };
+        match queries::set_setting(&mut conn, k::JWT_SECRET, &secret) {
+            Ok(()) => {
+                tracing::info!("generated and stored a random admin session (JWT) secret");
+                secret
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "could not persist the generated JWT secret ({e}); using an \
+                     ephemeral one (sessions won't survive a restart)"
+                );
+                secret
+            }
+        }
+    }
+
     pub fn core_config(pool: &DbPool) -> String {
         Self::get_or(pool, k::CORE_CONFIG, "/etc/hysteria/config.yaml")
     }

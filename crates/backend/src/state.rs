@@ -27,7 +27,9 @@ pub struct AppState {
 
 impl AppState {
     pub fn new(pool: DbPool, config: AppConfig) -> Self {
-        let keys = AuthKeys::new(&config.jwt_secret);
+        // Admin session signing secret, persisted in the DB and generated on
+        // first run.
+        let keys = AuthKeys::new(&Settings::ensure_jwt_secret(&pool));
         Self {
             pool,
             keys,

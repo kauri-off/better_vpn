@@ -45,11 +45,7 @@ sudo install vpn-backend /usr/local/bin/vpn-backend
 sudo install vpnctl /usr/local/bin/vpnctl
 
 sudo cp deploy/panel.env.example /etc/better_vpn/panel.env
-```
 
-**Edit** `/etc/better_vpn/panel.env`: DATABASE_URL, JWT_SECRET (`openssl rand -base64 48`).
-
-```bash
 # Create the first admin:
 sudo -u better_vpn vpn-backend --env-file /etc/better_vpn/panel.env admin create --username admin --password 'CHANGE_ME'
 ```
