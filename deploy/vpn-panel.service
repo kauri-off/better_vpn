@@ -2,8 +2,7 @@
 # Better VPN backend: gRPC/gRPC-Web API + Hysteria auth endpoint + stats poller.
 [Unit]
 Description=Better VPN panel backend
-After=network.target postgresql.service
-Wants=postgresql.service
+After=network.target
 
 [Service]
 Type=simple

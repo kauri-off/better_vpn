@@ -6,7 +6,7 @@ diesel::table! {
         id -> Int4,
         username -> Text,
         password_hash -> Text,
-        created_at -> Timestamptz,
+        created_at -> TimestamptzSqlite,
     }
 }
 
@@ -16,11 +16,11 @@ diesel::table! {
         username -> Text,
         token_hash -> Text,
         enabled -> Bool,
-        expires_at -> Nullable<Timestamptz>,
+        expires_at -> Nullable<TimestamptzSqlite>,
         quota_bytes -> Int8,
         used_bytes -> Int8,
         note -> Text,
-        created_at -> Timestamptz,
+        created_at -> TimestamptzSqlite,
         token -> Nullable<Text>,
         total_tx -> Int8,
         total_rx -> Int8,
@@ -31,7 +31,7 @@ diesel::table! {
     online_state (user_id) {
         user_id -> Int4,
         connections -> Int4,
-        last_seen -> Nullable<Timestamptz>,
+        last_seen -> Nullable<TimestamptzSqlite>,
     }
 }
 

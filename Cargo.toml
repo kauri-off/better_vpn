@@ -43,9 +43,11 @@ hyper = "1.10.1"
 reqwest = { version = "0.13.4", default-features = false, features = ["json", "rustls"] }
 
 # database
-diesel = { version = "2.3.10", features = ["postgres", "r2d2", "chrono", "numeric"] }
-diesel_migrations = { version = "2.3.2", features = ["postgres"] }
-pq-sys = { version = "0.7.5", features = ["bundled_without_openssl"] }
+diesel = { version = "2.3.10", features = ["sqlite", "r2d2", "chrono", "returning_clauses_for_sqlite_3_35"] }
+diesel_migrations = { version = "2.3.2", features = ["sqlite"] }
+# Bundle SQLite so the (cross-compiled) binary is self-contained and needs no
+# system libsqlite3 at link time. Cargo feature-unification makes Diesel use it.
+libsqlite3-sys = { version = "0.36.0", features = ["bundled"] }
 r2d2 = "0.8.10"
 
 # serde

@@ -50,5 +50,4 @@ percent-encoding.workspace = true
 rcgen.workspace = true
 x509-parser.workspace = true
 time.workspace = true
-pq-sys.workspace = true
 sysinfo.workspace = true

@@ -12,32 +12,14 @@
 Nothing here is automated for you. These are Ubuntu commands; adapt them for
 your distro. Run them from a clone of the repo.
 
-### 0. Clone the repo
+### Clone the repo
 
 ```bash
 git clone https://github.com/kauri-off/better_vpn.git
 cd better_vpn
 ```
 
-### 1. Postgres
-
-Install the server if you don't already have one (Debian/Ubuntu):
-
-```bash
-sudo apt-get update && sudo apt-get install -y postgresql
-sudo systemctl enable --now postgresql
-```
-
-Then create the role and database:
-
-```bash
-sudo -u postgres psql <<'SQL'
-CREATE ROLE better_vpn LOGIN PASSWORD 'CHANGE_ME';
-CREATE DATABASE better_vpn OWNER better_vpn;
-SQL
-```
-
-### 2. System user and directories
+### System user and directories
 
 ```bash
 sudo useradd --system --home /var/lib/better_vpn --shell /usr/sbin/nologin better_vpn
@@ -45,7 +27,7 @@ sudo mkdir -p /var/lib/better_vpn/bin /etc/hysteria /etc/better_vpn /var/www/bet
 sudo chown -R better_vpn:better_vpn /var/lib/better_vpn /etc/hysteria
 ```
 
-### 3. Hysteria core
+### Hysteria core
 
 ```bash
 curl -L -o /tmp/hysteria   https://github.com/apernet/hysteria/releases/latest/download/hysteria-linux-amd64
@@ -55,7 +37,7 @@ sudo cp deploy/config.example.yaml /etc/hysteria/config.yaml
 sudo chown better_vpn:better_vpn /etc/hysteria/config.yaml
 ```
 
-### 4. Backend
+### Backend
 
 ```bash
 curl -L https://github.com/kauri-off/better_vpn/releases/latest/download/better-vpn-backend-x86_64-unknown-linux-gnu.tar.gz | tar -xz
@@ -72,7 +54,7 @@ sudo cp deploy/panel.env.example /etc/better_vpn/panel.env
 sudo -u better_vpn vpn-backend --env-file /etc/better_vpn/panel.env admin create --username admin --password 'CHANGE_ME'
 ```
 
-### 5. systemd
+### systemd
 
 ```bash
 sudo cp deploy/hysteria.service deploy/vpn-panel.service /etc/systemd/system/
@@ -91,7 +73,7 @@ sudo systemctl restart polkit
 The unit name is `hysteria.service` by default; override with `CORE_SERVICE` in
 `panel.env` (and match it in the rule).
 
-### 6. (Optional) Web panel + Caddy (subpath)
+### (Optional) Web panel + Caddy (subpath)
 
 ```bash
 sudo apt-get update && sudo apt-get install -y caddy

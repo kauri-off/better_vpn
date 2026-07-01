@@ -6,7 +6,7 @@ use diesel::prelude::*;
 
 #[derive(Debug, Clone, Queryable, Selectable, Identifiable)]
 #[diesel(table_name = admins)]
-#[diesel(check_for_backend(diesel::pg::Pg))]
+#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
 pub struct Admin {
     pub id: i32,
     pub username: String,
@@ -23,7 +23,7 @@ pub struct NewAdmin<'a> {
 
 #[derive(Debug, Clone, Queryable, Selectable, Identifiable)]
 #[diesel(table_name = vpn_users)]
-#[diesel(check_for_backend(diesel::pg::Pg))]
+#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
 pub struct VpnUser {
     pub id: i32,
     pub username: String,
@@ -70,7 +70,7 @@ pub struct VpnUserChanges {
 #[derive(Debug, Clone, Queryable, Selectable, Identifiable)]
 #[diesel(table_name = online_state)]
 #[diesel(primary_key(user_id))]
-#[diesel(check_for_backend(diesel::pg::Pg))]
+#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
 pub struct OnlineState {
     pub user_id: i32,
     pub connections: i32,
@@ -79,7 +79,7 @@ pub struct OnlineState {
 
 #[derive(Debug, Clone, Queryable, Selectable, Insertable)]
 #[diesel(table_name = settings)]
-#[diesel(check_for_backend(diesel::pg::Pg))]
+#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
 pub struct Setting {
     pub key: String,
     pub value: String,

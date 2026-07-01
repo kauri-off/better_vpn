@@ -7,6 +7,7 @@ license.workspace = true
 [dependencies]
 diesel.workspace = true
 diesel_migrations.workspace = true
+libsqlite3-sys.workspace = true
 r2d2.workspace = true
 chrono.workspace = true
 serde.workspace = true

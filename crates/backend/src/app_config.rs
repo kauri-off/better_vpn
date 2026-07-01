@@ -24,7 +24,7 @@ pub struct AppConfig {
 impl AppConfig {
     pub fn from_env() -> anyhow::Result<Self> {
         let database_url = std::env::var("DATABASE_URL")
-            .context("DATABASE_URL is required (postgres://user:pass@host/db)")?;
+            .context("DATABASE_URL is required (path to the sqlite db file, e.g. /var/lib/better_vpn/panel.db)")?;
 
         let jwt_secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| {
             let s = vpn_common::token::generate_token();

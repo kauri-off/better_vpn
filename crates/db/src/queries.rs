@@ -132,15 +132,15 @@ pub fn reset_usage(conn: &mut DbConn, id: i32) -> Result<VpnUser, DbError> {
 
 /// All-time traffic totals across all users: (sum total_tx, sum total_rx).
 /// Survives per-user quota resets, which only zero `vpn_users.used_bytes`.
-/// The `::bigint` casts keep Postgres' `numeric` SUM out of the result type
-/// (which would otherwise require BigDecimal).
+/// The explicit CAST keeps the result typed as `BigInt` (i64) to match the
+/// declared `sql::<BigInt>` type.
 pub fn usage_totals(conn: &mut DbConn) -> Result<(i64, i64), DbError> {
     use diesel::dsl::sql;
     use diesel::sql_types::BigInt;
     let totals: (i64, i64) = vpn_users::table
         .select((
-            sql::<BigInt>("COALESCE(SUM(total_tx), 0)::bigint"),
-            sql::<BigInt>("COALESCE(SUM(total_rx), 0)::bigint"),
+            sql::<BigInt>("CAST(COALESCE(SUM(total_tx), 0) AS BIGINT)"),
+            sql::<BigInt>("CAST(COALESCE(SUM(total_rx), 0) AS BIGINT)"),
         ))
         .first(conn)?;
     Ok(totals)
