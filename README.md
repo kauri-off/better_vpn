@@ -109,6 +109,34 @@ Open `https://vpn.example.com/panel/` and log in.
 
 ---
 
+## Update
+
+### Backend + vpnctl
+
+```bash
+sudo systemctl stop vpn-panel
+curl -L https://github.com/kauri-off/better_vpn/releases/latest/download/better-vpn-backend-x86_64-unknown-linux-gnu.tar.gz | tar -xz
+sudo install vpn-backend /usr/local/bin/vpn-backend
+sudo install vpnctl /usr/local/bin/vpnctl
+sudo systemctl start vpn-panel
+```
+
+Database migrations run automatically on startup.
+
+### Web panel
+
+```bash
+curl -L https://github.com/kauri-off/better_vpn/releases/latest/download/better-vpn-webpanel.tar.gz | sudo tar -xz --no-same-owner -C /var/www/better_vpn
+sudo systemctl reload caddy
+```
+
+### Hysteria core
+
+Run `vpnctl` -> `Core` -> `Update core`. This downloads the latest release,
+replaces the binary, and restarts `hysteria.service` for you.
+
+---
+
 ## Using the console over SSH
 
 `vpnctl` is an interactive menu — just run it:
