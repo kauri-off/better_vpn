@@ -189,7 +189,7 @@ impl PanelSvc {
         // Token is URL-safe base64, but encode it anyway to stay correct if the
         // generator ever changes.
         let auth = utf8_percent_encode(token, URI_COMPONENT);
-        let mut uri = format!("hysteria2://{auth}@{address}/");
+        let mut uri = format!("hy2://{auth}@{address}");
 
         let mut params = Vec::new();
         if !sni.is_empty() {
@@ -219,9 +219,9 @@ impl PanelSvc {
         // clients, so optimise for them. Fall back to `insecure=1` only if the
         // cert file can't be read, so a link is never silently un-pinnable.
         match cert::cert_pin_sha256(&sc.tls_cert) {
-            Some(pin) => {
-                params.push(format!("pinSHA256={}", utf8_percent_encode(&pin, URI_COMPONENT)))
-            }
+            // The colon-delimited fingerprint is left literal (colons are legal in
+            // a query component) to match what v2rayN/v2rayNG emit and expect.
+            Some(pin) => params.push(format!("pinSHA256={pin}")),
             None => params.push("insecure=1".to_string()),
         }
 
@@ -315,7 +315,7 @@ mod uri_tests {
 
     #[test]
     fn renders_scannable_qr_svg() {
-        let svg = PanelSvc::qr_svg("hysteria2://tok@host:443/#name");
+        let svg = PanelSvc::qr_svg("hy2://tok@host:443#name");
         assert!(svg.starts_with("<?xml") || svg.contains("<svg"));
     }
 }
