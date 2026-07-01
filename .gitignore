@@ -1,0 +1,25 @@
+# Rust
+/target
+**/*.rs.bk
+Cargo.lock.orig
+
+# Node / web
+web/node_modules
+web/dist
+web/src/gen
+
+# Env / secrets
+.env
+*.env
+config.local.*
+*.bak.*
+
+# Local deploy scripts
+deploy-dev.ps1
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

@@ -1,0 +1,39 @@
+# Example Hysteria 2 server config for use with the Better VPN panel.
+#
+# The panel manages users via the HTTP auth backend and reads statistics via
+# the Traffic Stats API. The three blocks marked "managed by panel" are
+# reasserted by the panel on every save — do not point them elsewhere.
+#
+# Everything else here is yours to edit (by hand or via the panel); unknown
+# keys you add are preserved on panel saves.
+
+listen: :443
+
+# --- TLS: static self-signed cert/key. Generate from the panel
+# (Settings -> TLS certificate -> Generate), which writes these files and fills
+# in the paths below. Clients trust it by pinned fingerprint, not hostname. ---
+tls:
+  cert: /etc/hysteria/fullchain.pem
+  key: /etc/hysteria/privkey.pem
+
+# --- managed by panel: dynamic per-user auth ---
+auth:
+  type: http
+  http:
+    url: http://127.0.0.1:8080/auth
+
+# --- managed by panel: statistics + kick API ---
+trafficStats:
+  listen: 127.0.0.1:9999
+  secret: CHANGE_ME_STATS_SECRET
+
+bandwidth:
+  up: 1 gbps
+  down: 1 gbps
+
+# Optional: make the server look like a normal website to probers.
+masquerade:
+  type: proxy
+  proxy:
+    url: https://news.ycombinator.com/
+    rewriteHost: true

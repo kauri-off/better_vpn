@@ -1,0 +1,72 @@
+name: release
+
+# Cut a release by pushing a tag like `v0.1.0`.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write # needed to create the GitHub release
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      TARGET: x86_64-unknown-linux-gnu
+    steps:
+      - uses: actions/checkout@v4
+
+      # ---------------------------------------------------------------- backend
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-gnu
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build backend (vpn-backend + vpnctl)
+        run: cargo build --release --target "$TARGET" --bin vpn-backend --bin vpnctl
+
+      # --------------------------------------------------------------- web panel
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Build web panel
+        working-directory: web
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm generate        # buf generate -> src/gen (gitignored)
+          pnpm build           # tsc + vite -> web/dist
+
+      # ----------------------------------------------------------------- package
+      - name: Package artifacts
+        run: |
+          BIN_DIR="target/${TARGET}/release"
+
+          # Version-less asset names so `releases/latest/download/<name>` resolves.
+          tar -C "${BIN_DIR}" -czf "better-vpn-backend-${TARGET}.tar.gz" vpn-backend vpnctl
+
+          # Web panel: archive the built dist (contents at the tar root).
+          tar -C web/dist -czf "better-vpn-webpanel.tar.gz" .
+
+          sha256sum better-vpn-*.tar.gz > SHA256SUMS.txt
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            better-vpn-backend-x86_64-unknown-linux-gnu.tar.gz
+            better-vpn-webpanel.tar.gz
+            SHA256SUMS.txt

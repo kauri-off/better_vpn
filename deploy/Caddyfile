@@ -1,0 +1,28 @@
+# Caddy reverse proxy serving the panel under a subpath (/panel) with automatic
+# HTTPS. The panel UI is static files; API calls go to /panel/api which is
+# proxied to the backend gRPC-Web listener.
+#
+# Why a subpath: it keeps the panel off the web root and lets you host it on the
+# same domain as the masquerade site / other services.
+
+vpn.example.com {
+    # Normalize: the SPA computes its API URL relative to a trailing slash.
+    redir /panel /panel/ 308
+
+    # gRPC-Web API -> backend. Must come before the static handler.
+    handle_path /panel/api/* {
+        reverse_proxy 127.0.0.1:50051
+    }
+
+    # Static panel assets (built with `pnpm build`, base "./").
+    handle_path /panel/* {
+        root * /var/www/better_vpn
+        try_files {path} /index.html
+        file_server
+    }
+
+    # Optional: send everything else to your masquerade/site.
+    # handle {
+    #     reverse_proxy https://news.ycombinator.com
+    # }
+}

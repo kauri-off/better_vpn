@@ -1,0 +1,86 @@
+//! Diesel models (queryable rows + insertable/updatable structs).
+
+use crate::schema::*;
+use chrono::{DateTime, Utc};
+use diesel::prelude::*;
+
+#[derive(Debug, Clone, Queryable, Selectable, Identifiable)]
+#[diesel(table_name = admins)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct Admin {
+    pub id: i32,
+    pub username: String,
+    pub password_hash: String,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Insertable)]
+#[diesel(table_name = admins)]
+pub struct NewAdmin<'a> {
+    pub username: &'a str,
+    pub password_hash: &'a str,
+}
+
+#[derive(Debug, Clone, Queryable, Selectable, Identifiable)]
+#[diesel(table_name = vpn_users)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct VpnUser {
+    pub id: i32,
+    pub username: String,
+    pub token_hash: String,
+    pub enabled: bool,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub quota_bytes: i64,
+    pub used_bytes: i64,
+    pub note: String,
+    pub created_at: DateTime<Utc>,
+    /// Plaintext auth token, persisted so the panel can re-show the connection
+    /// URI/QR. NULL for users created before the token column existed.
+    pub token: Option<String>,
+    /// Lifetime uploaded/downloaded bytes. Unlike `used_bytes`, these are never
+    /// zeroed by a quota reset and feed the panel's all-time traffic totals.
+    pub total_tx: i64,
+    pub total_rx: i64,
+}
+
+#[derive(Debug, Insertable)]
+#[diesel(table_name = vpn_users)]
+pub struct NewVpnUser<'a> {
+    pub username: &'a str,
+    pub token_hash: &'a str,
+    pub enabled: bool,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub quota_bytes: i64,
+    pub note: &'a str,
+    pub token: &'a str,
+}
+
+#[derive(Debug, Default, AsChangeset)]
+#[diesel(table_name = vpn_users)]
+pub struct VpnUserChanges {
+    pub enabled: Option<bool>,
+    // Note: double Option lets us set the column to NULL (Some(None)) vs leave
+    // it unchanged (None).
+    pub expires_at: Option<Option<DateTime<Utc>>>,
+    pub quota_bytes: Option<i64>,
+    pub used_bytes: Option<i64>,
+    pub note: Option<String>,
+}
+
+#[derive(Debug, Clone, Queryable, Selectable, Identifiable)]
+#[diesel(table_name = online_state)]
+#[diesel(primary_key(user_id))]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct OnlineState {
+    pub user_id: i32,
+    pub connections: i32,
+    pub last_seen: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Queryable, Selectable, Insertable)]
+#[diesel(table_name = settings)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct Setting {
+    pub key: String,
+    pub value: String,
+}

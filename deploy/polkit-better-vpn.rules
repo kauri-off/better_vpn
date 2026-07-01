@@ -1,0 +1,20 @@
+// Install to: /etc/polkit-1/rules.d/49-better-vpn.rules
+// Then reload polkit: systemctl restart polkit
+//
+// Lets the unprivileged `better_vpn` panel user restart the Hysteria core via
+// systemd (the panel's "Restart core" button shells out to
+// `systemctl restart hysteria.service`). This keeps the panel service running
+// as a non-root user with NoNewPrivileges=true — no sudo, no root.
+//
+// If you point CORE_SERVICE at a different unit in panel.env, change the unit
+// name below to match.
+polkit.addRule(function(action, subject) {
+    if (action.id == "org.freedesktop.systemd1.manage-units" &&
+        action.lookup("unit") == "hysteria.service" &&
+        subject.user == "better_vpn") {
+        var verb = action.lookup("verb");
+        if (verb == "restart" || verb == "start" || verb == "stop") {
+            return polkit.Result.YES;
+        }
+    }
+});

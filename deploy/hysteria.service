@@ -1,0 +1,25 @@
+# /etc/systemd/system/hysteria.service
+# Hysteria 2 core. Runs independently from the panel — you can start/stop/update
+# it on its own.
+[Unit]
+Description=Hysteria 2 server
+After=network.target
+
+[Service]
+Type=simple
+# Point at the binary the panel updates (writable by the better_vpn user) so
+# core updates from the panel work without root. Or use /usr/local/bin/hysteria
+# if you update the core by hand.
+ExecStart=/var/lib/better_vpn/bin/hysteria server -c /etc/hysteria/config.yaml
+WorkingDirectory=/etc/hysteria
+Restart=on-failure
+RestartSec=3
+# Bind :443 without running as root.
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+DynamicUser=no
+User=better_vpn
+Group=better_vpn
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,90 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/proto",
+    "crates/common",
+    "crates/db",
+    "crates/backend",
+    "crates/console",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+authors = ["better_vpn"]
+
+[workspace.dependencies]
+# Internal crates
+vpn-proto = { path = "crates/proto" }
+vpn-common = { path = "crates/common" }
+vpn-db = { path = "crates/db" }
+
+# gRPC / proto
+tonic = "0.14.6"
+tonic-web = "0.14.6"
+tonic-build = "0.14.6"
+tonic-prost = "0.14.6"
+tonic-prost-build = "0.14.6"
+prost = "0.14.4"
+prost-types = "0.14.4"
+protoc-bin-vendored = "3.2.0"
+
+# async
+tokio = { version = "1.52.3", features = ["full"] }
+tokio-stream = "0.1.18"
+futures = "0.3.32"
+
+# web / http
+axum = "0.8.9"
+tower = "0.5.3"
+tower-http = { version = "0.7.0", features = ["cors", "trace"] }
+hyper = "1.10.1"
+reqwest = { version = "0.13.4", default-features = false, features = ["json", "rustls"] }
+
+# database
+diesel = { version = "2.3.10", features = ["postgres", "r2d2", "chrono", "numeric"] }
+diesel_migrations = { version = "2.3.2", features = ["postgres"] }
+pq-sys = { version = "0.7.5", features = ["bundled_without_openssl"] }
+r2d2 = "0.8.10"
+
+# serde
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.150"
+serde_norway = "0.9.42"
+
+# auth / crypto
+argon2 = "0.5.3"
+# v10 requires selecting a crypto provider explicitly; we only use HS256, so the
+# pure-Rust HMAC backend is enough (avoids needing a rustls CryptoProvider at runtime).
+jsonwebtoken = { version = "10.4.0", default-features = false, features = ["rust_crypto"] }
+rand = "0.10.1"
+sha2 = "0.11.0"
+hex = "0.4.3"
+base64 = "0.22.1"
+
+# cli
+clap = { version = "4.6.1", features = ["derive", "env"] }
+dialoguer = "0.11"
+console = "0.15"
+
+# tls / certificates
+rcgen = { version = "0.14.8", default-features = false, features = ["ring", "pem"] }
+x509-parser = "0.18.1"
+time = "0.3.53"
+
+# misc
+anyhow = "1.0.103"
+thiserror = "2.0.18"
+qrcode = { version = "0.14.1", default-features = false, features = ["svg"] }
+percent-encoding = "2.3.2"
+chrono = { version = "0.4.45", features = ["serde"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+config = "0.15.25"
+uuid = { version = "1.23.4", features = ["v4", "serde"] }
+sysinfo = "0.39.5"
+
+[profile.release]
+strip = true
+lto = "thin"

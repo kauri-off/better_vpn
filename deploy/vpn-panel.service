@@ -1,0 +1,22 @@
+# /etc/systemd/system/vpn-panel.service
+# Better VPN backend: gRPC/gRPC-Web API + Hysteria auth endpoint + stats poller.
+[Unit]
+Description=Better VPN panel backend
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/better_vpn/panel.env
+ExecStart=/usr/local/bin/vpn-backend serve
+Restart=on-failure
+RestartSec=3
+User=better_vpn
+Group=better_vpn
+# Allows the panel to write config.yaml and swap the core binary it manages.
+ReadWritePaths=/etc/hysteria /var/lib/better_vpn
+StateDirectory=better_vpn
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

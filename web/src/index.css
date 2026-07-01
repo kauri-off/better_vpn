@@ -1,0 +1,102 @@
+@import "tailwindcss";
+
+/* Class-based dark mode: `.dark` on <html> flips the theme. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * Design tokens. Values live as CSS variables so light/dark just swap them,
+ * and Tailwind utilities (bg-background, text-foreground, …) map to them via
+ * the @theme block below.
+ */
+:root {
+  --background: #f7f8fa;
+  --foreground: #11131a;
+  --card: #ffffff;
+  --card-foreground: #11131a;
+  --muted: #6b7280;
+  --muted-bg: #eceef2;
+  --border: #e3e6ec;
+  --input: #ffffff;
+  --primary: #2f6bff;
+  --primary-foreground: #ffffff;
+  --accent: #2f6bff;
+  --destructive: #e5484d;
+  --destructive-foreground: #ffffff;
+  --ok: #2fa968;
+  --ring: #2f6bff;
+}
+
+.dark {
+  --background: #0e1014;
+  --foreground: #e6e8ec;
+  --card: #161a21;
+  --card-foreground: #e6e8ec;
+  --muted: #9aa1ad;
+  --muted-bg: #1d222b;
+  --border: #272c36;
+  --input: #0d0f14;
+  --primary: #4f8cff;
+  --primary-foreground: #ffffff;
+  --accent: #4f8cff;
+  --destructive: #ff5c5c;
+  --destructive-foreground: #ffffff;
+  --ok: #44d07b;
+  --ring: #4f8cff;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-muted: var(--muted);
+  --color-muted-bg: var(--muted-bg);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-accent: var(--accent);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-ok: var(--ok);
+  --color-ring: var(--ring);
+  --radius: 0.625rem;
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    margin: 0;
+    background: var(--background);
+    color: var(--foreground);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  /* Subtle themed scrollbars */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 999px;
+  }
+}
+
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}

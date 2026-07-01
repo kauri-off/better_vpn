@@ -1,0 +1,263 @@
+syntax = "proto3";
+
+package panel;
+
+// PanelService is the single management surface for the Better VPN panel.
+// It is served by the backend over gRPC (console) and gRPC-Web (browser).
+//
+// Authentication: every RPC except `Login` requires an admin bearer token in
+// the `authorization` metadata header: `authorization: Bearer <jwt>`.
+service PanelService {
+  // ---- Auth ----
+  rpc Login(LoginRequest) returns (LoginResponse);
+  rpc WhoAmI(Empty) returns (Admin);
+
+  // ---- VPN users ----
+  rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
+  // Live user list: streams a fresh ListUsersResponse immediately, then again
+  // on every background stats-poll tick (online counts / usage change there),
+  // until the client disconnects. Powers the auto-updating Users table.
+  rpc StreamUsers(ListUsersRequest) returns (stream ListUsersResponse);
+  rpc GetUser(GetUserRequest) returns (VpnUser);
+  rpc CreateUser(CreateUserRequest) returns (CreateUserResponse);
+  // Re-fetch a user's stored connection URI / token / QR (for the share screen).
+  rpc GetUserConfig(GetUserRequest) returns (UserConfigResponse);
+  rpc UpdateUser(UpdateUserRequest) returns (VpnUser);
+  rpc DeleteUser(GetUserRequest) returns (Empty);
+  // Force-disconnect a user's active sessions via the Hysteria kick API.
+  rpc KickUser(GetUserRequest) returns (Empty);
+  // Reset a user's accumulated usage counter to zero.
+  rpc ResetUserUsage(GetUserRequest) returns (VpnUser);
+
+  // ---- Stats ----
+  rpc GetServerStats(Empty) returns (ServerStats);
+  // Live server stats: streams a fresh ServerStats immediately, then again on
+  // every background stats-poll tick, until the client disconnects. Powers the
+  // auto-updating dashboard.
+  rpc StreamServerStats(Empty) returns (stream ServerStats);
+
+  // ---- Core control ----
+  // Restart the Hysteria core service to apply config/cert changes on disk.
+  rpc RestartCore(Empty) returns (Empty);
+  // Download the latest core release, replace the binary, and restart it.
+  rpc UpdateCore(Empty) returns (UpdateCoreResponse);
+
+  // ---- Config (Hysteria server config.yaml) ----
+  rpc GetConfig(Empty) returns (ConfigResponse);
+  // Update from the structured form; unknown/manual YAML keys are preserved.
+  rpc UpdateConfig(UpdateConfigRequest) returns (ConfigResponse);
+  // Update by replacing the raw YAML text (validated before swap).
+  rpc UpdateRawConfig(UpdateRawConfigRequest) returns (ConfigResponse);
+
+  // ---- TLS certificate (self-signed) ----
+  // Inspect the cert the config currently points at (subject, SANs, expiry, pin).
+  rpc GetCertInfo(Empty) returns (CertInfo);
+  // Mint a new self-signed cert, write it next to the config, and point the
+  // config's tls block at it.
+  rpc GenerateCert(GenerateCertRequest) returns (CertInfo);
+
+  // ---- Panel settings (runtime, DB-backed) ----
+  rpc GetSettings(Empty) returns (PanelSettings);
+  rpc UpdateSettings(PanelSettings) returns (PanelSettings);
+}
+
+message Empty {}
+
+// ---- Core control ----
+message UpdateCoreResponse {
+  string version = 1; // the core version after the update
+}
+
+// ---- Auth ----
+message LoginRequest {
+  string username = 1;
+  string password = 2;
+}
+message LoginResponse {
+  string token = 1;
+  int64 expires_at = 2; // unix seconds
+}
+message Admin {
+  int32 id = 1;
+  string username = 2;
+  int64 created_at = 3;
+}
+
+// ---- VPN users ----
+message VpnUser {
+  int32 id = 1;
+  string username = 2;       // the Hysteria stats `id`
+  bool enabled = 3;
+  int64 expires_at = 4;      // unix seconds, 0 = never
+  int64 quota_bytes = 5;     // 0 = unlimited
+  int64 used_bytes = 6;      // accumulated tx+rx
+  int32 connections = 7;     // live online connections (devices)
+  int64 last_seen = 8;       // unix seconds, 0 = never
+  int64 created_at = 9;
+  string note = 10;
+}
+
+message ListUsersRequest {
+  string search = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+}
+message ListUsersResponse {
+  repeated VpnUser users = 1;
+  int32 total = 2;
+}
+message GetUserRequest {
+  int32 id = 1;
+  // Host the panel is being browsed on (e.g. "10.0.0.5"); used as the
+  // connection link's @host. Only meaningful for GetUserConfig; ignored
+  // elsewhere. Empty (e.g. from the SSH console) => the detected server IP.
+  string link_host = 2;
+}
+
+message CreateUserRequest {
+  string username = 1;
+  int64 expires_at = 2;
+  int64 quota_bytes = 3;
+  string note = 4;
+  bool enabled = 5;
+  // Host the panel is being browsed on; used as the new user's connection link
+  // @host (see GetUserRequest.link_host). Empty => the detected server IP.
+  string link_host = 6;
+}
+message CreateUserResponse {
+  VpnUser user = 1;
+  // The one-time plaintext auth token to give the client (never stored).
+  string auth_token = 2;
+  // Ready-to-use hysteria2:// connection URI.
+  string connection_uri = 3;
+  // QR code of the connection URI, rendered as a standalone SVG document.
+  string qr_svg = 4;
+}
+// Stored connection details for an existing user's share/QR screen.
+message UserConfigResponse {
+  string username = 1;
+  // Plaintext auth token, or empty if it was not stored (legacy user).
+  string auth_token = 2;
+  // hysteria2:// connection URI, empty when the token is unavailable.
+  string connection_uri = 3;
+  // QR code of the connection URI as a standalone SVG, empty when unavailable.
+  string qr_svg = 4;
+}
+message UpdateUserRequest {
+  int32 id = 1;
+  optional bool enabled = 2;
+  optional int64 expires_at = 3;
+  optional int64 quota_bytes = 4;
+  optional string note = 5;
+}
+
+// ---- Stats ----
+message ServerStats {
+  int32 total_users = 1;
+  int32 online_users = 2;
+  // All-time user traffic, summed from per-user lifetime counters that survive
+  // quota resets. total_tx = uploaded by clients, total_rx = downloaded.
+  int64 total_tx = 3;
+  int64 total_rx = 4;
+  bool core_running = 5;
+  string core_version = 6;
+
+  // ---- Host system metrics (sampled by the backend's sysinfo monitor) ----
+  double cpu_percent = 7;       // global CPU utilisation, 0..100
+  int64 mem_used = 8;           // bytes
+  int64 mem_total = 9;          // bytes
+  int64 uptime_secs = 10;       // host uptime in seconds
+  int64 net_rx_rate = 11;       // current inbound rate, bytes/sec
+  int64 net_tx_rate = 12;       // current outbound rate, bytes/sec
+  // Host NIC byte counters since the last reboot (sum across interfaces).
+  int64 reboot_tx = 13;         // transmitted (out)
+  int64 reboot_rx = 14;         // received (in)
+  int32 tcp_conns = 15;         // open TCP sockets
+  int32 udp_conns = 16;         // open UDP sockets
+  string ipv4 = 17;             // detected public IPv4, empty if unknown
+  string ipv6 = 18;             // detected public IPv6, empty if unknown
+}
+
+// ---- Config ----
+message ConfigResponse {
+  // The full raw YAML on disk.
+  string raw_yaml = 1;
+  // Structured view of panel-managed fields.
+  HysteriaConfig structured = 2;
+  // True if the panel-required auth/trafficStats blocks were modified by hand
+  // and had to be reasserted on the last save.
+  bool managed_blocks_reasserted = 3;
+}
+message UpdateConfigRequest { HysteriaConfig structured = 1; }
+message UpdateRawConfigRequest { string raw_yaml = 1; }
+
+// Panel-managed subset of the Hysteria server config. Anything not listed
+// here is preserved verbatim on round-trip.
+message HysteriaConfig {
+  string listen = 1;             // e.g. ":443"
+  TlsConfig tls = 2;
+  ObfsConfig obfs = 3;
+  Bandwidth bandwidth = 4;
+  Masquerade masquerade = 5;
+  // auth.type and trafficStats are managed by the panel and not editable here.
+}
+message TlsConfig {
+  string cert = 1;
+  string key = 2;
+}
+message ObfsConfig {
+  string type = 1;     // "" (off) | salamander
+  string password = 2;
+}
+message Bandwidth {
+  string up = 1;       // e.g. "100 mbps"
+  string down = 2;
+}
+message Masquerade {
+  string type = 1;     // "" | proxy | string | file
+  string proxy_url = 2;
+  string string_content = 3;
+}
+
+// ---- TLS certificate ----
+// Inspected state of the self-signed cert the Hysteria config points at. The
+// fingerprint is the same value the panel pins into connection links.
+message CertInfo {
+  bool exists = 1;                // is there a readable cert file at cert_path?
+  string cert_path = 2;           // resolved path inspected
+  string key_path = 3;            // resolved companion key path
+  string subject_cn = 4;          // certificate subject common name
+  repeated string sans = 5;       // subject alternative names (IPs + DNS)
+  int64 not_before = 6;           // unix secs, validity start
+  int64 not_after = 7;            // unix secs, validity end
+  string fingerprint_sha256 = 8;  // colon-hex SHA-256, == pinSHA256 link value
+  bool expired = 9;               // now is outside [not_before, not_after]
+  string parse_error = 10;        // non-empty if the file exists but failed to parse
+}
+message GenerateCertRequest {
+  string common_name = 1;         // subject CN; "" => first SAN, else "vpn"
+  // Explicit SANs (optional). Empty by default: the cert carries NO SAN, which
+  // is deliberate. Clients trust it by `pinSHA256`, not hostname, and an empty
+  // SAN set frees the SNI — Hysteria's default `tls.sniGuard: dns-san` only
+  // validates the client SNI when the cert has a DNS-type SAN. So the SNI is a
+  // pure client-side DPI value, decoupled from the cert. Add SANs only if you
+  // specifically want hostname validation back.
+  repeated string sans = 2;
+  int32 validity_days = 3;        // 0 => default 3650
+  string cert_path = 4;           // "" => <config dir>/fullchain.pem
+  string key_path = 5;            // "" => <config dir>/privkey.pem
+}
+
+// ---- Panel settings ----
+// Runtime, DB-backed settings editable from the panel. These feed the
+// hysteria2:// connection links the panel generates, so changing them affects
+// every link issued afterwards.
+message PanelSettings {
+  // Port clients dial (e.g. "443"). The host half of the connection link is the
+  // host the admin is browsing the panel on (passed per-request as link_host),
+  // so only the port is configured here. Empty => the core's listen port.
+  string port = 1;
+  // TLS SNI clients present. Client-side / DPI camouflage only: the self-signed
+  // cert has no SAN, so any value (or none) is accepted.
+  string sni = 2;
+}
