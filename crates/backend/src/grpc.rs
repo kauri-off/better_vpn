@@ -302,6 +302,20 @@ fn listen_port(listen: &str) -> u16 {
         .unwrap_or(443)
 }
 
+/// Replace the port in a Hysteria `listen` value while preserving the host /
+/// interface prefix. The port is the segment after the final `:`; everything
+/// before it (a bind IP, a bracketed IPv6, or nothing for a wildcard bind) is
+/// kept as-is. Examples: `:443` -> `:8443`, `1.2.3.4:443` -> `1.2.3.4:8443`,
+/// `[::]:443` -> `[::]:8443`, `` -> `:8443`.
+fn set_listen_port(listen: &str, port: &str) -> String {
+    let listen = listen.trim();
+    let host = match listen.rfind(':') {
+        Some(i) => &listen[..i],
+        None => listen,
+    };
+    format!("{host}:{port}")
+}
+
 #[cfg(test)]
 mod uri_tests {
     use super::*;
@@ -323,6 +337,17 @@ mod uri_tests {
         assert_eq!(listen_port("[::]:443"), 443);
         assert_eq!(listen_port(""), 443);
         assert_eq!(listen_port("garbage"), 443);
+    }
+
+    #[test]
+    fn sets_listen_port_preserving_host() {
+        assert_eq!(set_listen_port(":443", "8443"), ":8443");
+        assert_eq!(set_listen_port("0.0.0.0:443", "8443"), "0.0.0.0:8443");
+        assert_eq!(set_listen_port("1.2.3.4:443", "8443"), "1.2.3.4:8443");
+        assert_eq!(set_listen_port("[::]:443", "8443"), "[::]:8443");
+        // No existing port / empty listen: produce a wildcard bind on the port.
+        assert_eq!(set_listen_port("", "8443"), ":8443");
+        assert_eq!(set_listen_port("1.2.3.4", "8443"), "1.2.3.4:8443");
     }
 
     #[test]
@@ -758,7 +783,9 @@ impl PanelService for PanelSvc {
             if !cn.is_empty() {
                 cn.to_string()
             } else {
-                sans.first().cloned().unwrap_or_else(|| "vpn".to_string())
+                sans.first()
+                    .cloned()
+                    .unwrap_or_else(|| cert::DEFAULT_CERT_CN.to_string())
             }
         };
         let validity_days = if req.validity_days <= 0 {
@@ -820,15 +847,52 @@ impl PanelService for PanelSvc {
     ) -> Result<Response<pb::PanelSettings>, Status> {
         check_auth(&self.state.keys, &request)?;
         let s = request.into_inner();
+        let port = s.port.trim();
+
+        // An explicit port now drives the core's actual `listen` bind (below), so
+        // it must be a real port number. Empty keeps the current behaviour: don't
+        // manage `listen`, and let client links borrow whatever the core listens on.
+        if !port.is_empty() && !matches!(port.parse::<u16>(), Ok(p) if p != 0) {
+            return Err(Status::invalid_argument(format!(
+                "port must be a number between 1 and 65535: {port}"
+            )));
+        }
+
         let mut conn = self
             .state
             .pool
             .get()
             .map_err(|e| Status::internal(e.to_string()))?;
-        queries::set_setting(&mut conn, k::PORT, s.port.trim())
+        queries::set_setting(&mut conn, k::PORT, port)
             .map_err(|e| Status::internal(e.to_string()))?;
         queries::set_setting(&mut conn, k::SNI, s.sni.trim())
             .map_err(|e| Status::internal(e.to_string()))?;
+        drop(conn);
+
+        // Sync the port into the Hysteria `config.yaml` `listen:` field so the
+        // daemon actually binds the configured port — the DB setting alone only
+        // affected the advertised client-link port. Preserve any host/interface
+        // prefix on `listen` (e.g. a specific bind IP) and only swap the port.
+        // A restart is required for the core to rebind, so only do it when the
+        // listen value actually changed (avoid dropping live connections on a
+        // no-op save).
+        if !port.is_empty() {
+            let mgr = ConfigManager::new(Settings::core_config(&self.state.pool));
+            let sc = mgr
+                .structured_view()
+                .map_err(|e| Status::internal(e.to_string()))?;
+            let new_listen = set_listen_port(&sc.listen, port);
+            if new_listen != sc.listen {
+                let mut updated = sc.clone();
+                updated.listen = new_listen;
+                let managed = managed::managed_blocks(&self.state);
+                mgr.apply_structured(&updated, &managed)
+                    .map_err(|e| Status::internal(e.to_string()))?;
+                self.restart_unit().await?;
+                self.state.invalidate_core_version().await;
+            }
+        }
+
         Ok(Response::new(pb::PanelSettings {
             port: Settings::port(&self.state.pool),
             sni: Settings::sni(&self.state.pool),

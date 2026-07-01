@@ -46,8 +46,11 @@ sudo install vpnctl /usr/local/bin/vpnctl
 
 sudo cp deploy/panel.env.example /etc/better_vpn/panel.env
 
+ENVF=/etc/better_vpn/panel.env
 # Create the first admin:
-sudo -u better_vpn vpn-backend --env-file /etc/better_vpn/panel.env admin create --username admin --password 'CHANGE_ME'
+sudo -u better_vpn vpn-backend --env-file $ENVF admin create --username admin --password 'CHANGE_ME'
+sudo -u better_vpn vpn-backend --env-file $ENVF set port 1935
+sudo -u better_vpn vpn-backend --env-file $ENVF set sni google.com
 ```
 
 ### systemd

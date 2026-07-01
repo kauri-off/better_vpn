@@ -136,8 +136,10 @@ async fn serve(cfg: AppConfig, pool: vpn_db::DbPool) -> anyhow::Result<()> {
     // next reassert if the DB is unreachable right now (see managed_blocks).
     settings::Settings::ensure_stats_secret(&state.pool);
 
-    // Reassert managed config blocks on startup (best-effort; the config file
-    // may not exist yet during first setup).
+    // Reassert managed config blocks on startup, and make sure the TLS cert the
+    // config points at actually exists — otherwise the core refuses to start on
+    // first boot, before an operator has generated one from the panel.
+    // (best-effort; the config file may not exist yet during first setup).
     {
         let managed = managed::managed_blocks(&state);
         let mgr = config::ConfigManager::new(settings::Settings::core_config(&state.pool));
@@ -146,6 +148,22 @@ async fn serve(cfg: AppConfig, pool: vpn_db::DbPool) -> anyhow::Result<()> {
                 Ok(true) => tracing::info!("reasserted panel-managed config blocks on startup"),
                 Ok(false) => {}
                 Err(e) => tracing::warn!("could not reassert managed config blocks: {e}"),
+            }
+            match mgr.structured_view() {
+                Ok(sc) if !sc.tls_cert.trim().is_empty() && !sc.tls_key.trim().is_empty() => {
+                    match cert::ensure_default_cert(&sc.tls_cert, &sc.tls_key) {
+                        Ok(true) => tracing::info!(
+                            "generated a default self-signed TLS cert at {} so the core can \
+                             start; regenerate it from the panel (Settings -> TLS certificate) \
+                             to customise",
+                            sc.tls_cert
+                        ),
+                        Ok(false) => {}
+                        Err(e) => tracing::warn!("could not generate default TLS cert: {e}"),
+                    }
+                }
+                Ok(_) => {}
+                Err(e) => tracing::warn!("could not read core config to check TLS cert: {e}"),
             }
         }
     }

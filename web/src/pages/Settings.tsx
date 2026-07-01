@@ -54,7 +54,7 @@ export default function Settings() {
     onSuccess: (s) => {
       setPort(s.port);
       setSni(s.sni);
-      toast.success("Saved. New connection links will use these values.");
+      toast.success("Saved. If the port changed, the core was restarted to bind it; new links use these values.");
       queryClient.invalidateQueries({
         queryKey: createConnectQueryKey({ schema: getSettings, transport, cardinality: "finite" }),
       });
@@ -191,7 +191,7 @@ export default function Settings() {
                   id="cert_cn"
                   value={commonName}
                   onChange={(e) => setCommonName(e.target.value)}
-                  placeholder="defaults to vpn"
+                  placeholder="defaults to localhost"
                   spellCheck={false}
                 />
               </div>

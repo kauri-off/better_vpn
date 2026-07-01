@@ -13,6 +13,12 @@ use sha2::{Digest, Sha256};
 use std::net::IpAddr;
 use std::path::Path;
 
+/// Default certificate Common Name when the operator doesn't supply one. Kept
+/// deliberately generic (an ordinary self-signed server cert uses exactly this)
+/// so an active prober inspecting the cert learns nothing about the service —
+/// the CN is cosmetic anyway, since clients trust the cert by `pinSHA256`.
+pub const DEFAULT_CERT_CN: &str = "localhost";
+
 /// Inspected state of a certificate file for the panel UI.
 #[derive(Debug, Default, Clone)]
 pub struct CertSummary {
@@ -61,6 +67,21 @@ pub fn generate_self_signed(
         .context("self-signing certificate")?;
 
     Ok((cert.pem(), key_pair.serialize_pem()))
+}
+
+/// Ensure a usable TLS cert/key pair exists at `cert_path`/`key_path`, minting
+/// a default self-signed one if either file is missing. The defaults mirror the
+/// panel's `generate_cert` (CN `vpn`, no SAN so any client SNI is accepted, ~10y
+/// validity) so the core can start on first boot, before an operator has visited
+/// the panel. Returns `true` when a cert was generated, `false` when both files
+/// already existed. Regenerating from the panel later replaces this in place.
+pub fn ensure_default_cert(cert_path: &str, key_path: &str) -> Result<bool> {
+    if Path::new(cert_path).exists() && Path::new(key_path).exists() {
+        return Ok(false);
+    }
+    let (cert_pem, key_pem) = generate_self_signed(DEFAULT_CERT_CN, &[], 3650)?;
+    write_pems(cert_path, key_path, &cert_pem, &key_pem)?;
+    Ok(true)
 }
 
 /// Inspect the certificate at `cert_path`. Never errors: a missing file yields
@@ -283,6 +304,29 @@ mod tests {
             "span_days = {span_days}"
         );
         assert!(!info.fingerprint_sha256.is_empty());
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn ensure_default_cert_mints_once_with_generic_cn() {
+        let dir = std::env::temp_dir().join(format!("bvpn-ensure-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let cert_path = dir.join("fullchain.pem");
+        let key_path = dir.join("privkey.pem");
+        let c = cert_path.to_str().unwrap();
+        let k = key_path.to_str().unwrap();
+
+        // First call mints the pair using the generic default CN and no SAN.
+        assert!(ensure_default_cert(c, k).unwrap());
+        let info = inspect(c);
+        assert!(info.exists && info.parse_error.is_empty());
+        assert_eq!(info.subject_cn, DEFAULT_CERT_CN);
+        assert!(info.sans.is_empty());
+        assert!(!info.expired);
+
+        // Second call is a no-op once both files are present.
+        assert!(!ensure_default_cert(c, k).unwrap());
 
         std::fs::remove_dir_all(&dir).ok();
     }
