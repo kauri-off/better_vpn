@@ -5,12 +5,23 @@ package panel;
 // PanelService is the single management surface for the Better VPN panel.
 // It is served by the backend over gRPC (console) and gRPC-Web (browser).
 //
-// Authentication: every RPC except `Login` requires an admin bearer token in
-// the `authorization` metadata header: `authorization: Bearer <jwt>`.
+// Authentication: there is a single admin access token. It is stored only as a
+// SHA-256 hash (in the `settings` table) and is itself the bearer credential:
+// every RPC except `Login` requires it in the `authorization` metadata header
+// as `authorization: Bearer <token>`. There is no session/JWT layer.
 service PanelService {
   // ---- Auth ----
+  // Verify the admin token (sent in the request body). Unauthenticated and
+  // brute-force throttled. On success the caller stores the token and sends it
+  // as the bearer on every subsequent RPC.
   rpc Login(LoginRequest) returns (LoginResponse);
-  rpc WhoAmI(Empty) returns (Admin);
+  // Cheap authenticated ping: succeeds iff the bearer token is valid. Used by
+  // clients to check a stored token before showing the UI.
+  rpc WhoAmI(Empty) returns (Empty);
+  // Rotate the admin token. Pass an empty token to have the server generate a
+  // strong random one. Returns the new plaintext token once (store it now — the
+  // server keeps only its hash). Invalidates the old token immediately.
+  rpc SetAdminToken(SetAdminTokenRequest) returns (SetAdminTokenResponse);
 
   // ---- VPN users ----
   rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
@@ -70,17 +81,18 @@ message UpdateCoreResponse {
 
 // ---- Auth ----
 message LoginRequest {
-  string username = 1;
-  string password = 2;
+  string token = 1; // the single admin access token
 }
-message LoginResponse {
+message LoginResponse {}
+
+message SetAdminTokenRequest {
+  // New token. Empty => the server generates a strong random one.
   string token = 1;
-  int64 expires_at = 2; // unix seconds
 }
-message Admin {
-  int32 id = 1;
-  string username = 2;
-  int64 created_at = 3;
+message SetAdminTokenResponse {
+  // The new plaintext token (generated or echoed). Shown once; only its hash is
+  // persisted.
+  string token = 1;
 }
 
 // ---- VPN users ----

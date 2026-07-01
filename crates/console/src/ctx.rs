@@ -11,7 +11,7 @@ use tonic::Request;
 use vpn_proto::panel as pb;
 use vpn_proto::panel::panel_service_client::PanelServiceClient;
 
-use crate::{fmt, token_store, ui};
+use crate::{token_store, ui};
 
 pub type Client = PanelServiceClient<Channel>;
 
@@ -49,7 +49,9 @@ impl Ctx {
         Ok(resp.into_inner())
     }
 
-    /// Ensure a valid admin token is stored, prompting for login if not.
+    /// Ensure a valid admin token is stored, prompting for it if not. The token
+    /// is the bearer credential itself (there is no session), so a successful
+    /// `login` verification just means the stored token is what we keep.
     pub fn ensure_logged_in(&mut self) -> Result<()> {
         // A stored token that still validates lets us skip straight to the menu.
         if token_store::load().is_ok() {
@@ -65,16 +67,14 @@ impl Ctx {
 
         ui::header("Login");
         loop {
-            let username = ui::input_required("username")?;
-            let password = ui::password("password")?;
-            let req = Request::new(pb::LoginRequest { username, password });
+            let token = ui::password("admin token")?;
+            let req = Request::new(pb::LoginRequest {
+                token: token.clone(),
+            });
             match self.call(|mut c| async move { c.login(req).await }) {
-                Ok(resp) => {
-                    token_store::save(&resp.token)?;
-                    ui::success(format!(
-                        "logged in; token stored (expires {})",
-                        fmt::ts(resp.expires_at)
-                    ));
+                Ok(_) => {
+                    token_store::save(&token)?;
+                    ui::success("logged in; token stored");
                     return Ok(());
                 }
                 Err(e) => {

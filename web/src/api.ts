@@ -26,10 +26,10 @@ const authInterceptor: Interceptor = (next) => async (req) => {
   try {
     return await next(req);
   } catch (err) {
-    // A stale token (e.g. after the server's JWT secret was reset) is rejected
-    // with Unauthenticated. Drop it and reload so App renders the login page
-    // instead of leaking "invalid or expired token" into every page. Guard on
-    // `token` so a failed login (no token) still shows its own error inline.
+    // A stale token (e.g. after the admin token was rotated elsewhere) is
+    // rejected with Unauthenticated. Drop it and reload so App renders the login
+    // page instead of leaking "invalid token" into every page. Guard on `token`
+    // so a failed login (no token) still shows its own error inline.
     if (token && err instanceof ConnectError && err.code === Code.Unauthenticated) {
       clearToken();
       window.location.reload();

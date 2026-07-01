@@ -2,11 +2,10 @@
 //!
 //! Subcommands:
 //!   (default / `serve`)  run the gRPC+web API, Hysteria auth endpoint, poller
-//!   `admin create`       bootstrap an admin (direct DB access)
+//!   `admin set-token`    set/generate the single admin access token
 //!   `set <key> <value>`  seed a runtime setting (stats secret, paths, ...)
 
 mod app_config;
-mod auth;
 mod cert;
 mod config;
 mod grpc;
@@ -68,7 +67,7 @@ fn load_env_file(path: &Path) -> anyhow::Result<()> {
 enum Command {
     /// Run the daemon (default).
     Serve,
-    /// Manage admins directly in the database (bootstrap).
+    /// Manage admin access directly in the database (bootstrap).
     Admin {
         #[command(subcommand)]
         action: AdminAction,
@@ -79,12 +78,12 @@ enum Command {
 
 #[derive(Subcommand)]
 enum AdminAction {
-    /// Create an admin user.
-    Create {
-        #[arg(long)]
-        username: String,
-        #[arg(long)]
-        password: String,
+    /// Set the single admin access token, storing only its SHA-256 hash. Omit
+    /// the token to generate a strong random one. The plaintext is printed once
+    /// (it is not recoverable afterwards) — use it to log into the panel/console.
+    SetToken {
+        /// The token to set. Omit to generate a random one.
+        token: Option<String>,
     },
 }
 
@@ -106,12 +105,23 @@ async fn main() -> anyhow::Result<()> {
 
     match cli.command.unwrap_or(Command::Serve) {
         Command::Admin {
-            action: AdminAction::Create { username, password },
+            action: AdminAction::SetToken { token },
         } => {
+            // Honour an explicit token; otherwise mint a strong random one.
+            let token = match token {
+                Some(t) if !t.trim().is_empty() => t.trim().to_string(),
+                _ => vpn_common::token::generate_token(),
+            };
+            let hash = vpn_common::token::hash_token(&token);
             let mut conn = pool.get()?;
-            let hash = auth::hash_password(&password)?;
-            let admin = queries::create_admin(&mut conn, &username, &hash)?;
-            println!("created admin #{} '{}'", admin.id, admin.username);
+            queries::set_setting(
+                &mut conn,
+                vpn_common::settings_keys::ADMIN_TOKEN_HASH,
+                &hash,
+            )?;
+            println!(
+                "admin access token set. Store it now — it is not recoverable:\n\n    {token}\n"
+            );
             Ok(())
         }
         Command::Set { key, value } => {

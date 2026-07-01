@@ -22,6 +22,30 @@ pub fn hash_token(token: &str) -> String {
     hex::encode(hasher.finalize())
 }
 
+/// Constant-time check that `token` hashes to `stored_hash` (a hex SHA-256 as
+/// produced by [`hash_token`]). Used to authenticate the single admin token.
+///
+/// The comparison is over the *hashes*, so a timing side-channel can't leak the
+/// real token; the constant-time walk is defence-in-depth. A 256-bit random
+/// token can't be brute-forced offline, so a plain SHA-256 (no argon2) is the
+/// right primitive here.
+pub fn verify_token(token: &str, stored_hash: &str) -> bool {
+    if stored_hash.is_empty() {
+        return false;
+    }
+    let computed = hash_token(token);
+    let a = computed.as_bytes();
+    let b = stored_hash.as_bytes();
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut diff = 0u8;
+    for (x, y) in a.iter().zip(b.iter()) {
+        diff |= x ^ y;
+    }
+    diff == 0
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -31,5 +55,15 @@ mod tests {
         let t = generate_token();
         assert_eq!(hash_token(&t), hash_token(&t));
         assert_ne!(hash_token(&t), hash_token(&generate_token()));
+    }
+
+    #[test]
+    fn verify_token_matches_only_the_right_token() {
+        let t = generate_token();
+        let h = hash_token(&t);
+        assert!(verify_token(&t, &h));
+        assert!(!verify_token(&generate_token(), &h));
+        assert!(!verify_token(&t, ""));
+        assert!(!verify_token(&t, "not-a-hash"));
     }
 }

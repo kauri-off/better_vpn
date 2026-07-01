@@ -14,9 +14,10 @@ pub enum CommonError {
 /// Settings keys persisted in the `settings` table.
 pub mod settings_keys {
     pub const STATS_SECRET: &str = "stats_secret";
-    // Admin session (JWT) signing secret. Generated and persisted on first run
-    // unless overridden by the JWT_SECRET env var.
-    pub const JWT_SECRET: &str = "jwt_secret";
+    // SHA-256 hash (hex) of the single admin access token. The token itself is
+    // never stored. Empty/absent => the panel is locked (no valid token) until
+    // `vpn-backend admin set-token` is run.
+    pub const ADMIN_TOKEN_HASH: &str = "admin_token_hash";
     pub const STATS_URL: &str = "stats_url";
     pub const CORE_CONFIG: &str = "core_config";
     // Optional override of the core release asset URL for panel-driven updates.

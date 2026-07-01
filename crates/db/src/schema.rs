@@ -2,15 +2,6 @@
 // (no diesel CLI required at build time).
 
 diesel::table! {
-    admins (id) {
-        id -> Int4,
-        username -> Text,
-        password_hash -> Text,
-        created_at -> TimestamptzSqlite,
-    }
-}
-
-diesel::table! {
     vpn_users (id) {
         id -> Int4,
         username -> Text,
@@ -44,4 +35,4 @@ diesel::table! {
 
 diesel::joinable!(online_state -> vpn_users (user_id));
 
-diesel::allow_tables_to_appear_in_same_query!(admins, vpn_users, online_state, settings,);
+diesel::allow_tables_to_appear_in_same_query!(vpn_users, online_state, settings,);

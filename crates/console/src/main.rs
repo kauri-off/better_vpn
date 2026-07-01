@@ -15,9 +15,8 @@ mod ui;
 
 use anyhow::Result;
 use console::style;
-use vpn_proto::panel as pb;
 
-use ctx::{authed, Ctx};
+use ctx::Ctx;
 
 const DEFAULT_ADDR: &str = "http://127.0.0.1:50051";
 
@@ -71,7 +70,6 @@ fn main_menu(ctx: &mut Ctx) {
             "Certificate",
             "Panel settings",
             "Core",
-            "Whoami",
             "Quit",
         ];
         match ui::menu("Main menu", &items) {
@@ -81,24 +79,7 @@ fn main_menu(ctx: &mut Ctx) {
             Some(3) => pages::cert::page(ctx),
             Some(4) => pages::settings::page(ctx),
             Some(5) => pages::core::page(ctx),
-            Some(6) => whoami(ctx),
             _ => return,
         }
-    }
-}
-
-fn whoami(ctx: &mut Ctx) {
-    let Some(req) = ui::report(authed(pb::Empty {})) else {
-        return;
-    };
-    if let Some(a) = ui::report(ctx.call(|mut c| async move { c.who_am_i(req).await })) {
-        ui::header("Whoami");
-        println!(
-            "#{} {}  (since {})",
-            a.id,
-            a.username,
-            fmt::ts(a.created_at)
-        );
-        ui::pause();
     }
 }

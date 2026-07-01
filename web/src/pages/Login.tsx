@@ -12,13 +12,14 @@ import { Alert } from "../components/ui/alert";
 import { Spinner } from "../components/ui/spinner";
 
 export default function Login() {
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
+  const [token, setTokenInput] = useState("");
   const navigate = useNavigate();
 
   const loginMutation = useMutation(login, {
-    onSuccess: (resp) => {
-      setToken(resp.token);
+    onSuccess: () => {
+      // The token itself is the bearer credential (no session token is issued),
+      // so store exactly what we just verified.
+      setToken(token.trim());
       navigate("/stats");
     },
   });
@@ -27,7 +28,7 @@ export default function Login() {
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
-    loginMutation.mutate({ username, password });
+    loginMutation.mutate({ token: token.trim() });
   }
 
   return (
@@ -41,16 +42,14 @@ export default function Login() {
         <CardContent>
           <form className="flex flex-col gap-4" onSubmit={submit}>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="username">Username</Label>
-              <Input id="username" value={username} onChange={(e) => setUsername(e.target.value)} autoFocus />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="token">Access token</Label>
               <Input
-                id="password"
+                id="token"
                 type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                value={token}
+                onChange={(e) => setTokenInput(e.target.value)}
+                autoFocus
+                spellCheck={false}
               />
             </div>
             {error && <Alert>{error}</Alert>}

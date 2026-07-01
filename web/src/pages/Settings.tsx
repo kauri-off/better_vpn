@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Save, RotateCw, ShieldPlus } from "lucide-react";
+import { Save, RotateCw, ShieldPlus, KeyRound } from "lucide-react";
 import { useMutation, useQuery, useTransport, createConnectQueryKey } from "@connectrpc/connect-query";
 import { useQueryClient } from "@tanstack/react-query";
-import { getSettings, updateSettings, getCertInfo, generateCert } from "../gen/panel-PanelService_connectquery";
-import { fmtTs } from "../api";
+import { getSettings, updateSettings, getCertInfo, generateCert, setAdminToken } from "../gen/panel-PanelService_connectquery";
+import { fmtTs, setToken } from "../api";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Input } from "../components/ui/input";
@@ -24,6 +24,8 @@ export default function Settings() {
   const [sni, setSni] = useState("");
   const [commonName, setCommonName] = useState("");
   const [validityDays, setValidityDays] = useState("3650");
+  const [newToken, setNewToken] = useState("");
+  const [issuedToken, setIssuedToken] = useState("");
 
   const settingsQuery = useQuery(getSettings, {});
   const certQuery = useQuery(getCertInfo, {});
@@ -75,6 +77,22 @@ export default function Settings() {
       });
     },
   });
+
+  // Errors here surface through AsyncActionButton's own toast, so no onError.
+  const setAdminTokenMutation = useMutation(setAdminToken, {
+    onSuccess: (resp) => {
+      // The old token no longer matches the stored hash, so adopt the new one
+      // for this session immediately (otherwise the next request 401s and boots
+      // us to the login page).
+      setToken(resp.token);
+      setIssuedToken(resp.token);
+      setNewToken("");
+    },
+  });
+
+  async function rotateToken() {
+    await setAdminTokenMutation.mutateAsync({ token: newToken.trim() });
+  }
 
   async function generate() {
     const days = Number(validityDays);
@@ -138,6 +156,55 @@ export default function Settings() {
                 </Button>
               </div>
             </>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Admin access token</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <p className="text-sm text-muted">
+            A single token authenticates the panel and console. Leave the field blank to generate a
+            strong random one. Changing it signs out every other session (and the vpnctl console)
+            until they log in with the new token; this browser stays signed in.
+          </p>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="admin_token">New token (blank = generate)</Label>
+            <Input
+              id="admin_token"
+              type="password"
+              value={newToken}
+              onChange={(e) => setNewToken(e.target.value)}
+              placeholder="leave blank to generate"
+              spellCheck={false}
+              autoComplete="new-password"
+            />
+          </div>
+          <div>
+            <AsyncActionButton
+              action={rotateToken}
+              successMessage="Admin token changed. Other sessions must sign in again."
+              renderIcon={() => <KeyRound className="size-4" />}
+              busyLabel="Changing…"
+              confirm={{
+                title: "Change admin token?",
+                description:
+                  "This immediately invalidates the current token everywhere. Every other signed-in session and the vpnctl console must log in again with the new token. This browser will keep working.",
+                confirmLabel: "Change token",
+              }}
+            >
+              Change token
+            </AsyncActionButton>
+          </div>
+          {issuedToken && (
+            <Alert>
+              <div className="flex flex-col gap-1">
+                <span className="text-sm font-medium">New token — copy it now, it isn't shown again:</span>
+                <code className="break-all font-mono text-xs">{issuedToken}</code>
+              </div>
+            </Alert>
           )}
         </CardContent>
       </Card>

@@ -1,47 +1,10 @@
 //! Typed query helpers. All take a `&mut DbConn`.
 
 use crate::models::*;
-use crate::schema::{admins, online_state, settings, vpn_users};
+use crate::schema::{online_state, settings, vpn_users};
 use crate::{DbConn, DbError};
 use chrono::{DateTime, Utc};
 use diesel::prelude::*;
-
-// ---------------- admins ----------------
-
-pub fn admin_by_username(conn: &mut DbConn, name: &str) -> Result<Option<Admin>, DbError> {
-    Ok(admins::table
-        .filter(admins::username.eq(name))
-        .select(Admin::as_select())
-        .first(conn)
-        .optional()?)
-}
-
-pub fn admin_count(conn: &mut DbConn) -> Result<i64, DbError> {
-    Ok(admins::table.count().get_result(conn)?)
-}
-
-pub fn create_admin(
-    conn: &mut DbConn,
-    username: &str,
-    password_hash: &str,
-) -> Result<Admin, DbError> {
-    Ok(diesel::insert_into(admins::table)
-        .values(NewAdmin {
-            username,
-            password_hash,
-        })
-        .returning(Admin::as_returning())
-        .get_result(conn)?)
-}
-
-pub fn admin_by_id(conn: &mut DbConn, id: i32) -> Result<Admin, DbError> {
-    admins::table
-        .find(id)
-        .select(Admin::as_select())
-        .first(conn)
-        .optional()?
-        .ok_or(DbError::NotFound)
-}
 
 // ---------------- vpn users ----------------
 

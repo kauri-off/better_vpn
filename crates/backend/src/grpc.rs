@@ -1,7 +1,6 @@
 //! Implementation of the `PanelService` gRPC surface consumed by the console
 //! and the web panel.
 
-use crate::auth::{verify_password, AuthKeys, Claims};
 use crate::cert;
 use crate::config::model::StructuredConfig;
 use crate::config::ConfigManager;
@@ -18,7 +17,7 @@ use std::time::Duration;
 use tokio_stream::{wrappers::ReceiverStream, Stream};
 use tonic::{Request, Response, Status};
 use vpn_common::settings_keys as k;
-use vpn_common::token::{generate_token, hash_token};
+use vpn_common::token::{generate_token, hash_token, verify_token};
 use vpn_db::models::VpnUserChanges;
 use vpn_db::queries;
 use vpn_proto::panel as pb;
@@ -36,15 +35,30 @@ impl PanelSvc {
 
 // ---------------- helpers ----------------
 
-fn check_auth<T>(keys: &AuthKeys, req: &Request<T>) -> Result<Claims, Status> {
+/// Single throttle bucket key for admin login (there is exactly one token).
+const THROTTLE_KEY: &str = "admin";
+
+/// Authenticate a request by comparing the bearer token to the stored admin
+/// token hash. The token itself is the credential (there is no session/JWT); an
+/// unset hash means no token has been configured, so the panel is locked.
+fn check_auth<T>(state: &AppState, req: &Request<T>) -> Result<(), Status> {
+    let stored = Settings::admin_token_hash(&state.pool);
+    if stored.is_empty() {
+        return Err(Status::unauthenticated(
+            "admin token is not configured; run `vpn-backend admin set-token`",
+        ));
+    }
     let header = req
         .metadata()
         .get("authorization")
         .and_then(|v| v.to_str().ok())
         .ok_or_else(|| Status::unauthenticated("missing authorization header"))?;
     let token = header.strip_prefix("Bearer ").unwrap_or(header);
-    keys.verify(token)
-        .map_err(|_| Status::unauthenticated("invalid or expired token"))
+    if verify_token(token, &stored) {
+        Ok(())
+    } else {
+        Err(Status::unauthenticated("invalid token"))
+    }
 }
 
 fn ts(dt: DateTime<Utc>) -> i64 {
@@ -377,54 +391,63 @@ impl PanelService for PanelSvc {
         request: Request<pb::LoginRequest>,
     ) -> Result<Response<pb::LoginResponse>, Status> {
         let req = request.into_inner();
-        if let Err(remaining) = self.state.login_throttle.check(&req.username) {
+        // A single token means a single throttle bucket, defending the one
+        // secret that protects everything against online brute force.
+        if let Err(remaining) = self.state.login_throttle.check(THROTTLE_KEY) {
             return Err(Status::resource_exhausted(format!(
                 "too many failed login attempts; try again in {}s",
                 remaining.as_secs()
             )));
         }
-        let mut conn = self.state.pool.get().map_err(db_err)?;
-        let admin = match queries::admin_by_username(&mut conn, &req.username).map_err(db_err)? {
-            Some(a) => a,
-            None => {
-                // Count attempts against unknown usernames too, so lockout can't
-                // be sidestepped and timing doesn't leak which names exist.
-                self.state.login_throttle.record_failure(&req.username);
-                return Err(Status::unauthenticated("invalid credentials"));
-            }
-        };
-        if !verify_password(&req.password, &admin.password_hash) {
-            self.state.login_throttle.record_failure(&req.username);
-            return Err(Status::unauthenticated("invalid credentials"));
+        let stored = Settings::admin_token_hash(&self.state.pool);
+        if stored.is_empty() {
+            return Err(Status::failed_precondition(
+                "admin token is not configured; run `vpn-backend admin set-token`",
+            ));
         }
-        self.state.login_throttle.record_success(&req.username);
-        let (token, exp) = self
-            .state
-            .keys
-            .issue(admin.id, &admin.username)
-            .map_err(|e| Status::internal(e.to_string()))?;
-        Ok(Response::new(pb::LoginResponse {
-            token,
-            expires_at: exp,
-        }))
+        if !verify_token(&req.token, &stored) {
+            self.state.login_throttle.record_failure(THROTTLE_KEY);
+            return Err(Status::unauthenticated("invalid token"));
+        }
+        self.state.login_throttle.record_success(THROTTLE_KEY);
+        Ok(Response::new(pb::LoginResponse {}))
     }
 
-    async fn who_am_i(&self, request: Request<pb::Empty>) -> Result<Response<pb::Admin>, Status> {
-        let claims = check_auth(&self.state.keys, &request)?;
+    async fn who_am_i(&self, request: Request<pb::Empty>) -> Result<Response<pb::Empty>, Status> {
+        check_auth(&self.state, &request)?;
+        Ok(Response::new(pb::Empty {}))
+    }
+
+    async fn set_admin_token(
+        &self,
+        request: Request<pb::SetAdminTokenRequest>,
+    ) -> Result<Response<pb::SetAdminTokenResponse>, Status> {
+        check_auth(&self.state, &request)?;
+        let req = request.into_inner();
+        // Empty => mint a strong random token; otherwise honour the operator's
+        // choice. Only the hash is stored; the plaintext is returned once.
+        let token = {
+            let t = req.token.trim();
+            if t.is_empty() {
+                generate_token()
+            } else {
+                t.to_string()
+            }
+        };
+        let hash = hash_token(&token);
         let mut conn = self.state.pool.get().map_err(db_err)?;
-        let admin = queries::admin_by_id(&mut conn, claims.sub).map_err(db_err)?;
-        Ok(Response::new(pb::Admin {
-            id: admin.id,
-            username: admin.username,
-            created_at: ts(admin.created_at),
-        }))
+        queries::set_setting(&mut conn, k::ADMIN_TOKEN_HASH, &hash).map_err(db_err)?;
+        // Any previously issued token no longer matches the stored hash, so all
+        // other sessions are effectively logged out on their next request.
+        tracing::info!("admin access token rotated");
+        Ok(Response::new(pb::SetAdminTokenResponse { token }))
     }
 
     async fn list_users(
         &self,
         request: Request<pb::ListUsersRequest>,
     ) -> Result<Response<pb::ListUsersResponse>, Status> {
-        check_auth(&self.state.keys, &request)?;
+        check_auth(&self.state, &request)?;
         let req = request.into_inner();
         Ok(Response::new(build_users_response(&self.state, &req)?))
     }
@@ -438,7 +461,7 @@ impl PanelService for PanelSvc {
     ) -> Result<Response<Self::StreamUsersStream>, Status> {
         // Authorize once up front; the token is validated here and the long-lived
         // stream then rides that decision (no per-tick re-check needed).
-        check_auth(&self.state.keys, &request)?;
+        check_auth(&self.state, &request)?;
         let req = request.into_inner();
         let state = self.state.clone();
 
@@ -471,7 +494,7 @@ impl PanelService for PanelSvc {
         &self,
         request: Request<pb::GetUserRequest>,
     ) -> Result<Response<pb::VpnUser>, Status> {
-        check_auth(&self.state.keys, &request)?;
+        check_auth(&self.state, &request)?;
         let id = request.into_inner().id;
         let mut conn = self.state.pool.get().map_err(db_err)?;
         let u =
@@ -483,7 +506,7 @@ impl PanelService for PanelSvc {
         &self,
         request: Request<pb::CreateUserRequest>,
     ) -> Result<Response<pb::CreateUserResponse>, Status> {
-        check_auth(&self.state.keys, &request)?;
+        check_auth(&self.state, &request)?;
         let req = request.into_inner();
         if req.username.trim().is_empty() {
             return Err(Status::invalid_argument("username is required"));
@@ -517,7 +540,7 @@ impl PanelService for PanelSvc {
         &self,
         request: Request<pb::GetUserRequest>,
     ) -> Result<Response<pb::UserConfigResponse>, Status> {
-        check_auth(&self.state.keys, &request)?;
+        check_auth(&self.state, &request)?;
         let req = request.into_inner();
         let id = req.id;
         let mut conn = self.state.pool.get().map_err(db_err)?;
@@ -545,7 +568,7 @@ impl PanelService for PanelSvc {
         &self,
         request: Request<pb::UpdateUserRequest>,
     ) -> Result<Response<pb::VpnUser>, Status> {
-        check_auth(&self.state.keys, &request)?;
+        check_auth(&self.state, &request)?;
         let req = request.into_inner();
         let changes = VpnUserChanges {
             enabled: req.enabled,
@@ -564,7 +587,7 @@ impl PanelService for PanelSvc {
         &self,
         request: Request<pb::GetUserRequest>,
     ) -> Result<Response<pb::Empty>, Status> {
-        check_auth(&self.state.keys, &request)?;
+        check_auth(&self.state, &request)?;
         let id = request.into_inner().id;
         let mut conn = self.state.pool.get().map_err(db_err)?;
         queries::delete_user(&mut conn, id).map_err(db_err)?;
@@ -575,7 +598,7 @@ impl PanelService for PanelSvc {
         &self,
         request: Request<pb::GetUserRequest>,
     ) -> Result<Response<pb::Empty>, Status> {
-        check_auth(&self.state.keys, &request)?;
+        check_auth(&self.state, &request)?;
         let id = request.into_inner().id;
         let mut conn = self.state.pool.get().map_err(db_err)?;
         let u =
@@ -593,7 +616,7 @@ impl PanelService for PanelSvc {
         &self,
         request: Request<pb::GetUserRequest>,
     ) -> Result<Response<pb::VpnUser>, Status> {
-        check_auth(&self.state.keys, &request)?;
+        check_auth(&self.state, &request)?;
         let id = request.into_inner().id;
         let mut conn = self.state.pool.get().map_err(db_err)?;
         let u = queries::reset_usage(&mut conn, id).map_err(db_err)?;
@@ -604,7 +627,7 @@ impl PanelService for PanelSvc {
         &self,
         request: Request<pb::Empty>,
     ) -> Result<Response<pb::ServerStats>, Status> {
-        check_auth(&self.state.keys, &request)?;
+        check_auth(&self.state, &request)?;
         Ok(Response::new(build_server_stats(&self.state).await?))
     }
 
@@ -617,7 +640,7 @@ impl PanelService for PanelSvc {
     ) -> Result<Response<Self::StreamServerStatsStream>, Status> {
         // Authorize once up front; the long-lived stream then rides that decision
         // (mirrors StreamUsers — no per-tick re-check needed).
-        check_auth(&self.state.keys, &request)?;
+        check_auth(&self.state, &request)?;
         let state = self.state.clone();
 
         // Small buffer: the dashboard only ever wants the latest snapshot, and a
@@ -648,7 +671,7 @@ impl PanelService for PanelSvc {
         &self,
         request: Request<pb::Empty>,
     ) -> Result<Response<pb::Empty>, Status> {
-        check_auth(&self.state.keys, &request)?;
+        check_auth(&self.state, &request)?;
         self.restart_unit().await?;
         // The new process may be a different binary; force a re-probe.
         self.state.invalidate_core_version().await;
@@ -659,7 +682,7 @@ impl PanelService for PanelSvc {
         &self,
         request: Request<pb::Empty>,
     ) -> Result<Response<pb::UpdateCoreResponse>, Status> {
-        check_auth(&self.state.keys, &request)?;
+        check_auth(&self.state, &request)?;
         let url = Settings::core_download_url(&self.state.pool);
         let version = crate::hysteria::core::update(&self.state.config.core_bin, &url)
             .await
@@ -675,7 +698,7 @@ impl PanelService for PanelSvc {
         &self,
         request: Request<pb::Empty>,
     ) -> Result<Response<pb::ConfigResponse>, Status> {
-        check_auth(&self.state.keys, &request)?;
+        check_auth(&self.state, &request)?;
         let mgr = ConfigManager::new(Settings::core_config(&self.state.pool));
         let raw = mgr
             .read_raw()
@@ -694,7 +717,7 @@ impl PanelService for PanelSvc {
         &self,
         request: Request<pb::UpdateConfigRequest>,
     ) -> Result<Response<pb::ConfigResponse>, Status> {
-        check_auth(&self.state.keys, &request)?;
+        check_auth(&self.state, &request)?;
         let req = request.into_inner();
         let sc = proto_to_structured(req.structured.unwrap_or_default());
         let mgr = ConfigManager::new(Settings::core_config(&self.state.pool));
@@ -719,7 +742,7 @@ impl PanelService for PanelSvc {
         &self,
         request: Request<pb::UpdateRawConfigRequest>,
     ) -> Result<Response<pb::ConfigResponse>, Status> {
-        check_auth(&self.state.keys, &request)?;
+        check_auth(&self.state, &request)?;
         let raw_in = request.into_inner().raw_yaml;
         let mgr = ConfigManager::new(Settings::core_config(&self.state.pool));
         let managed = managed::managed_blocks(&self.state);
@@ -743,7 +766,7 @@ impl PanelService for PanelSvc {
         &self,
         request: Request<pb::Empty>,
     ) -> Result<Response<pb::CertInfo>, Status> {
-        check_auth(&self.state.keys, &request)?;
+        check_auth(&self.state, &request)?;
         let core_config = Settings::core_config(&self.state.pool);
         let sc = ConfigManager::new(&core_config)
             .structured_view()
@@ -760,7 +783,7 @@ impl PanelService for PanelSvc {
         &self,
         request: Request<pb::GenerateCertRequest>,
     ) -> Result<Response<pb::CertInfo>, Status> {
-        check_auth(&self.state.keys, &request)?;
+        check_auth(&self.state, &request)?;
         let req = request.into_inner();
 
         // The cert carries NO SAN by default. Clients trust it by `pinSHA256`
@@ -834,7 +857,7 @@ impl PanelService for PanelSvc {
         &self,
         request: Request<pb::Empty>,
     ) -> Result<Response<pb::PanelSettings>, Status> {
-        check_auth(&self.state.keys, &request)?;
+        check_auth(&self.state, &request)?;
         Ok(Response::new(pb::PanelSettings {
             port: Settings::port(&self.state.pool),
             sni: Settings::sni(&self.state.pool),
@@ -845,7 +868,7 @@ impl PanelService for PanelSvc {
         &self,
         request: Request<pb::PanelSettings>,
     ) -> Result<Response<pb::PanelSettings>, Status> {
-        check_auth(&self.state.keys, &request)?;
+        check_auth(&self.state, &request)?;
         let s = request.into_inner();
         let port = s.port.trim();
 

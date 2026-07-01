@@ -5,23 +5,6 @@ use chrono::{DateTime, Utc};
 use diesel::prelude::*;
 
 #[derive(Debug, Clone, Queryable, Selectable, Identifiable)]
-#[diesel(table_name = admins)]
-#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
-pub struct Admin {
-    pub id: i32,
-    pub username: String,
-    pub password_hash: String,
-    pub created_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Insertable)]
-#[diesel(table_name = admins)]
-pub struct NewAdmin<'a> {
-    pub username: &'a str,
-    pub password_hash: &'a str,
-}
-
-#[derive(Debug, Clone, Queryable, Selectable, Identifiable)]
 #[diesel(table_name = vpn_users)]
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
 pub struct VpnUser {

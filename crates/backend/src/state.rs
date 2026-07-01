@@ -2,7 +2,6 @@
 //! background poller.
 
 use crate::app_config::AppConfig;
-use crate::auth::AuthKeys;
 use crate::hysteria::client::StatsClient;
 use crate::login_throttle::LoginThrottle;
 use crate::settings::Settings;
@@ -14,7 +13,6 @@ use vpn_db::DbPool;
 #[derive(Clone)]
 pub struct AppState {
     pub pool: DbPool,
-    pub keys: AuthKeys,
     pub config: Arc<AppConfig>,
     pub sys: SysMonitor,
     /// Brute-force throttle for admin login (process-local).
@@ -27,12 +25,8 @@ pub struct AppState {
 
 impl AppState {
     pub fn new(pool: DbPool, config: AppConfig) -> Self {
-        // Admin session signing secret, persisted in the DB and generated on
-        // first run.
-        let keys = AuthKeys::new(&Settings::ensure_jwt_secret(&pool));
         Self {
             pool,
-            keys,
             config: Arc::new(config),
             sys: SysMonitor::new(),
             login_throttle: Arc::new(LoginThrottle::new()),
