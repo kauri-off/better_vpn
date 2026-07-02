@@ -163,7 +163,7 @@ impl PanelSvc {
     /// this `systemctl restart` reaches systemd over D-Bus and is authorized by
     /// the deploy/polkit-better-vpn.rules rule.
     async fn restart_unit(&self) -> Result<(), Status> {
-        let unit = self.state.config.core_service.clone();
+        let unit = Settings::core_service(&self.state.pool);
         let run = tokio::process::Command::new("systemctl")
             .arg("restart")
             .arg(&unit)
@@ -684,7 +684,7 @@ impl PanelService for PanelSvc {
     ) -> Result<Response<pb::UpdateCoreResponse>, Status> {
         check_auth(&self.state, &request)?;
         let url = Settings::core_download_url(&self.state.pool);
-        let version = crate::hysteria::core::update(&self.state.config.core_bin, &url)
+        let version = crate::hysteria::core::update(&Settings::core_bin(&self.state.pool), &url)
             .await
             .map_err(|e| Status::internal(format!("core update failed: {e:#}")))?;
         tracing::info!("updated core binary to {version} from panel");

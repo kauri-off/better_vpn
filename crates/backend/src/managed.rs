@@ -8,8 +8,10 @@ use crate::state::AppState;
 
 /// Build the managed-blocks descriptor from current app config + settings.
 pub fn managed_blocks(state: &AppState) -> ManagedBlocks {
-    // The auth endpoint binds to AUTH_ADDR; Hysteria reaches it at the same host.
-    let auth_url = format!("http://{}/auth", state.config.auth_addr);
+    // The auth endpoint binds to the `auth_addr` setting, which is authoritative:
+    // Hysteria reaches it at the same host, so we derive `auth.http.url` from it
+    // here and reassert it into config.yaml, overwriting any manual edit.
+    let auth_url = format!("http://{}/auth", Settings::auth_addr(&state.pool));
     ManagedBlocks {
         auth_url,
         stats_listen: stats_listen_from_url(&Settings::stats_url(&state.pool)),

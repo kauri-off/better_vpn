@@ -96,4 +96,33 @@ impl Settings {
             .parse()
             .unwrap_or(10)
     }
+
+    /// gRPC + gRPC-Web management listener (fronted by Caddy). Read once at
+    /// startup; keep it on localhost. Change with `vpn-backend set grpc_addr …`.
+    pub fn grpc_addr(pool: &DbPool) -> String {
+        Self::get_or(pool, k::GRPC_ADDR, "127.0.0.1:50051")
+    }
+
+    /// Hysteria `auth.type: http` backend listener. This is the authoritative
+    /// source for the core's `auth.http.url`: the panel derives that URL from
+    /// this value and reasserts it into config.yaml on every save and on
+    /// startup, so a manual `auth.http.url` edit is always overwritten. Read
+    /// once at startup to bind the listener. Keep it on localhost.
+    pub fn auth_addr(pool: &DbPool) -> String {
+        Self::get_or(pool, k::AUTH_ADDR, "127.0.0.1:8080")
+    }
+
+    /// systemd unit name of the Hysteria core, restarted via `systemctl` when
+    /// the panel applies config/cert changes. If you change this, update
+    /// deploy/polkit-better-vpn.rules to match the new unit.
+    pub fn core_service(pool: &DbPool) -> String {
+        Self::get_or(pool, k::CORE_SERVICE, "hysteria.service")
+    }
+
+    /// Path to the Hysteria core binary. Used to detect the running version and
+    /// as the replace target for panel-driven core updates. Must live in a
+    /// directory writable by the panel user.
+    pub fn core_bin(pool: &DbPool) -> String {
+        Self::get_or(pool, k::CORE_BIN, "/var/lib/better_vpn/bin/hysteria")
+    }
 }

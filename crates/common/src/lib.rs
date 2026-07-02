@@ -25,6 +25,15 @@ pub mod settings_keys {
     pub const PORT: &str = "port"; // port for client URIs (host comes from the panel URL)
     pub const SNI: &str = "sni";
     pub const POLL_INTERVAL_SECS: &str = "poll_interval_secs";
+    // gRPC + gRPC-Web management listener (fronted by Caddy). Read once at startup.
+    pub const GRPC_ADDR: &str = "grpc_addr";
+    // Hysteria `auth.type: http` backend listener. Authoritative source for the
+    // core's `auth.http.url`, which the panel derives from this on every save.
+    pub const AUTH_ADDR: &str = "auth_addr";
+    // systemd unit of the Hysteria core, restarted via `systemctl` on config/cert changes.
+    pub const CORE_SERVICE: &str = "core_service";
+    // Path to the Hysteria core binary (version probe + panel-driven update target).
+    pub const CORE_BIN: &str = "core_bin";
 }
 
 /// Connection info needed to build a hysteria2:// client URI.

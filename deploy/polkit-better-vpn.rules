@@ -6,8 +6,8 @@
 // `systemctl restart hysteria.service`). This keeps the panel service running
 // as a non-root user with NoNewPrivileges=true — no sudo, no root.
 //
-// If you point CORE_SERVICE at a different unit in panel.env, change the unit
-// name below to match.
+// If you point the `core_service` setting at a different unit
+// (`vpn-backend set core_service <unit>`), change the unit name below to match.
 polkit.addRule(function(action, subject) {
     if (action.id == "org.freedesktop.systemd1.manage-units" &&
         action.lookup("unit") == "hysteria.service" &&

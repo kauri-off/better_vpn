@@ -53,6 +53,15 @@ ENVF=/etc/better_vpn/panel.env
 sudo -u better_vpn vpn-backend --env-file $ENVF admin set-token
 sudo -u better_vpn vpn-backend --env-file $ENVF set port 1935
 sudo -u better_vpn vpn-backend --env-file $ENVF set sni google.com
+
+# Optional: every DB-backed setting with its default (see panel.env.example).
+# sudo -u better_vpn vpn-backend --env-file $ENVF set stats_url          http://127.0.0.1:9999 # Traffic Stats API base URL
+# sudo -u better_vpn vpn-backend --env-file $ENVF set core_config        /etc/hysteria/config.yaml # Hysteria config.yaml path
+# sudo -u better_vpn vpn-backend --env-file $ENVF set poll_interval_secs 10                    # stats poll interval (seconds)
+# sudo -u better_vpn vpn-backend --env-file $ENVF set grpc_addr          127.0.0.1:50051       # management listener (restart to apply)
+# sudo -u better_vpn vpn-backend --env-file $ENVF set auth_addr          127.0.0.1:8080        # Hysteria auth listener (restart to apply)
+# sudo -u better_vpn vpn-backend --env-file $ENVF set core_service       hysteria.service      # systemd unit restarted by the panel
+# sudo -u better_vpn vpn-backend --env-file $ENVF set core_bin           /var/lib/better_vpn/bin/hysteria # core binary path
 ```
 
 ### systemd
@@ -71,8 +80,8 @@ sudo cp deploy/polkit-better-vpn.rules /etc/polkit-1/rules.d/49-better-vpn.rules
 sudo systemctl restart polkit
 ```
 
-The unit name is `hysteria.service` by default; override with `CORE_SERVICE` in
-`panel.env` (and match it in the rule).
+The unit name is `hysteria.service` by default; override it with
+`vpn-backend --env-file $ENVF set core_service <unit>` (and match it in the rule).
 
 ### (Optional) Web panel + Caddy (subpath)
 

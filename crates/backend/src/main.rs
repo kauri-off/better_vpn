@@ -130,12 +130,12 @@ async fn main() -> anyhow::Result<()> {
             println!("set {key}");
             Ok(())
         }
-        Command::Serve => serve(cfg, pool).await,
+        Command::Serve => serve(pool).await,
     }
 }
 
-async fn serve(cfg: AppConfig, pool: vpn_db::DbPool) -> anyhow::Result<()> {
-    let state = AppState::new(pool, cfg.clone());
+async fn serve(pool: vpn_db::DbPool) -> anyhow::Result<()> {
+    let state = AppState::new(pool);
 
     // The stats-API secret is a localhost-only shared secret between the panel
     // and the core's trafficStats endpoint, so there's no reason for an operator
@@ -184,8 +184,10 @@ async fn serve(cfg: AppConfig, pool: vpn_db::DbPool) -> anyhow::Result<()> {
     // Background host-metrics sampler (CPU/RAM/network/sockets/public IP).
     state.sys.spawn();
 
-    // Hysteria HTTP auth backend (axum) on AUTH_ADDR.
-    let auth_addr: SocketAddr = cfg.auth_addr.parse()?;
+    // Hysteria HTTP auth backend (axum) on the configured auth listener. This
+    // setting is authoritative: the managed config block derives the core's
+    // `auth.http.url` from the same value (see managed::managed_blocks).
+    let auth_addr: SocketAddr = settings::Settings::auth_addr(&state.pool).parse()?;
     let auth_router = hysteria::auth::router(state.clone());
     let auth_handle = tokio::spawn(async move {
         let listener = tokio::net::TcpListener::bind(auth_addr)
@@ -197,8 +199,8 @@ async fn serve(cfg: AppConfig, pool: vpn_db::DbPool) -> anyhow::Result<()> {
             .expect("auth server");
     });
 
-    // gRPC + gRPC-Web management API on GRPC_ADDR.
-    let grpc_addr: SocketAddr = cfg.grpc_addr.parse()?;
+    // gRPC + gRPC-Web management API on the configured management listener.
+    let grpc_addr: SocketAddr = settings::Settings::grpc_addr(&state.pool).parse()?;
     let svc = grpc::PanelSvc::new(state);
     tracing::info!("panel gRPC/gRPC-Web API listening on {grpc_addr}");
 

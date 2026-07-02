@@ -1,7 +1,6 @@
 //! Shared application state passed to the gRPC service, auth endpoint, and
 //! background poller.
 
-use crate::app_config::AppConfig;
 use crate::hysteria::client::StatsClient;
 use crate::login_throttle::LoginThrottle;
 use crate::settings::Settings;
@@ -13,7 +12,6 @@ use vpn_db::DbPool;
 #[derive(Clone)]
 pub struct AppState {
     pub pool: DbPool,
-    pub config: Arc<AppConfig>,
     pub sys: SysMonitor,
     /// Brute-force throttle for admin login (process-local).
     pub login_throttle: Arc<LoginThrottle>,
@@ -24,10 +22,9 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new(pool: DbPool, config: AppConfig) -> Self {
+    pub fn new(pool: DbPool) -> Self {
         Self {
             pool,
-            config: Arc::new(config),
             sys: SysMonitor::new(),
             login_throttle: Arc::new(LoginThrottle::new()),
             core_version: Arc::new(RwLock::new(None)),
@@ -41,7 +38,7 @@ impl AppState {
         if let Some(v) = self.core_version.read().await.as_ref() {
             return v.clone();
         }
-        let detected = crate::hysteria::core::detect_version(&self.config.core_bin)
+        let detected = crate::hysteria::core::detect_version(&Settings::core_bin(&self.pool))
             .await
             .unwrap_or_default();
         *self.core_version.write().await = Some(detected.clone());
