@@ -14,10 +14,10 @@ import {
   Users as UsersIcon,
   Wifi,
 } from "lucide-react";
+import { toast } from "sonner";
 import { client, fmtBytes, fmtDuration, fmtRate } from "../api";
 import type { ServerStats } from "../gen/panel_pb";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
-import { Alert } from "../components/ui/alert";
 import { Skeleton } from "../components/ui/skeleton";
 import { cn } from "../lib/utils";
 
@@ -25,7 +25,6 @@ export default function Stats() {
   const [showIps, setShowIps] = useState(false);
   const [stats, setStats] = useState<ServerStats | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
 
   // Live stats stream: the server pushes a fresh snapshot immediately, then on
   // every poll tick, so the dashboard updates without client-side polling
@@ -42,12 +41,13 @@ export default function Stats() {
           const stream = client.streamServerStats({}, { signal: ctrl.signal });
           for await (const resp of stream) {
             setStats(resp);
-            setError("");
+            toast.dismiss("stats-stream");
             setLoading(false);
           }
         } catch (err) {
           if (ctrl.signal.aborted) return;
-          setError(err instanceof Error ? err.message : String(err));
+          // Stable id: retry failures update one toast instead of stacking.
+          toast.error(err instanceof Error ? err.message : String(err), { id: "stats-stream" });
           setLoading(false);
           await new Promise((r) => setTimeout(r, 3000));
         }
@@ -55,13 +55,14 @@ export default function Stats() {
     }
 
     void runStream();
-    return () => ctrl.abort();
+    return () => {
+      ctrl.abort();
+      toast.dismiss("stats-stream");
+    };
   }, []);
 
   return (
     <div className="flex flex-col gap-6">
-      {error && <Alert>{error}</Alert>}
-
       {/* Metric cards */}
       {loading && !stats ? (
         <Skeleton className="h-[220px]" />

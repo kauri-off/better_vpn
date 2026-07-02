@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 import { useMutation } from "@connectrpc/connect-query";
 import { login } from "../gen/panel-PanelService_connectquery";
 import { setToken } from "../api";
@@ -8,7 +9,6 @@ import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
-import { Alert } from "../components/ui/alert";
 import { Spinner } from "../components/ui/spinner";
 
 export default function Login() {
@@ -22,9 +22,9 @@ export default function Login() {
       setToken(token.trim());
       navigate("/stats");
     },
+    onError: (err) => toast.error(err.message, { id: "login" }),
   });
   const busy = loginMutation.isPending;
-  const error = loginMutation.error?.message ?? "";
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -52,7 +52,6 @@ export default function Login() {
                 spellCheck={false}
               />
             </div>
-            {error && <Alert>{error}</Alert>}
             <Button type="submit" disabled={busy} className="mt-1">
               {busy && <Spinner />}
               {busy ? "Signing in…" : "Log in"}

@@ -65,6 +65,11 @@ export default function Config() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data]);
 
+  // Load failures surface as a toast (stable id so refetch retries don't stack).
+  useEffect(() => {
+    if (error) toast.error(error.message, { id: "config-load" });
+  }, [error]);
+
   function savedToast(c: ConfigResponse) {
     toast.success(
       c.managedBlocksReasserted
@@ -134,8 +139,6 @@ export default function Config() {
 
   return (
     <div className="flex flex-col gap-6">
-      {error && <Alert>{error.message}</Alert>}
-
       {loading ? (
         <Skeleton className="h-[420px]" />
       ) : (

@@ -29,7 +29,6 @@ import { Card, CardContent } from "../components/ui/card";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Badge } from "../components/ui/badge";
-import { Alert } from "../components/ui/alert";
 import { Skeleton } from "../components/ui/skeleton";
 import {
   Table,
@@ -60,7 +59,6 @@ export default function Users() {
   const [users, setUsers] = useState<VpnUser[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
 
   const [createOpen, setCreateOpen] = useState(false);
   const [created, setCreated] = useState<
@@ -99,12 +97,13 @@ export default function Users() {
           for await (const resp of stream) {
             if (myGen !== gen.current) return;
             setUsers(resp.users);
-            setError("");
+            toast.dismiss("users-stream");
             setLoading(false);
           }
         } catch (err) {
           if (ctrl.signal.aborted || myGen !== gen.current) return;
-          setError(err instanceof Error ? err.message : String(err));
+          // Stable id: retry failures update one toast instead of stacking.
+          toast.error(err instanceof Error ? err.message : String(err), { id: "users-stream" });
           setLoading(false);
           await new Promise((r) => setTimeout(r, 3000));
         }
@@ -114,6 +113,7 @@ export default function Users() {
     return () => {
       clearTimeout(startTimer);
       ctrl.abort();
+      toast.dismiss("users-stream");
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search]);
@@ -161,8 +161,6 @@ export default function Users() {
 
   return (
     <div className="flex flex-col gap-4">
-      {error && <Alert>{error}</Alert>}
-
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative flex-1 min-w-[200px]">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />

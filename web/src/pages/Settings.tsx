@@ -47,6 +47,11 @@ export default function Settings() {
     if (c) setCommonName(c.exists && !c.parseError ? c.subjectCn : "");
   }, [certQuery.data]);
 
+  // Load failures surface as a toast (stable id so refetch retries don't stack).
+  useEffect(() => {
+    if (error) toast.error(error.message, { id: "settings-load" });
+  }, [error]);
+
   function reload() {
     settingsQuery.refetch();
     certQuery.refetch();
@@ -113,8 +118,6 @@ export default function Settings() {
 
   return (
     <div className="flex flex-col gap-6">
-      {error && <Alert>{error.message}</Alert>}
-
       <Card>
         <CardHeader>
           <CardTitle>Connection</CardTitle>
