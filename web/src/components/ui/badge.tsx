@@ -10,6 +10,7 @@ const badgeVariants = cva(
         neutral: "bg-muted-bg text-muted",
         on: "bg-[color-mix(in_srgb,var(--ok)_18%,transparent)] text-ok",
         off: "bg-[color-mix(in_srgb,var(--destructive)_18%,transparent)] text-destructive",
+        warn: "bg-[color-mix(in_srgb,var(--warning)_18%,transparent)] text-warning",
         accent: "bg-[color-mix(in_srgb,var(--primary)_18%,transparent)] text-primary",
       },
     },

@@ -23,6 +23,7 @@
   --destructive: #e5484d;
   --destructive-foreground: #ffffff;
   --ok: #2fa968;
+  --warning: #d98a1a;
   --ring: #2f6bff;
 }
 
@@ -41,6 +42,7 @@
   --destructive: #ff5c5c;
   --destructive-foreground: #ffffff;
   --ok: #44d07b;
+  --warning: #e0a53a;
   --ring: #4f8cff;
 }
 
@@ -59,6 +61,7 @@
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-ok: var(--ok);
+  --color-warning: var(--warning);
   --color-ring: var(--ring);
   --radius: 0.625rem;
 }

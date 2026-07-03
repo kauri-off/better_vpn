@@ -88,3 +88,22 @@ export function fmtTs(secs: bigint | number): string {
   if (s <= 0) return "never";
   return new Date(s * 1000).toLocaleString();
 }
+
+// Compact signed relative time against now: future → "in 3d", past → "4h ago".
+// 0 / negative epoch → "never". Used for expiry ("in 3d" / "expired 2d ago")
+// and last-seen ("seen 4h ago") — callers add the surrounding verb.
+export function fmtRelative(secs: bigint | number): string {
+  const s = Number(secs);
+  if (s <= 0) return "never";
+  const deltaSec = s - Date.now() / 1000;
+  const future = deltaSec >= 0;
+  let d = Math.abs(deltaSec);
+  const unit = (n: number, u: string) => (future ? `in ${n}${u}` : `${n}${u} ago`);
+  if (d < 60) return future ? "in <1m" : "just now";
+  if (d < 3600) return unit(Math.floor(d / 60), "m");
+  if (d < 86400) return unit(Math.floor(d / 3600), "h");
+  d = Math.floor(d / 86400);
+  if (d < 30) return unit(d, "d");
+  if (d < 365) return unit(Math.floor(d / 30), "mo");
+  return unit(Math.floor(d / 365), "y");
+}
