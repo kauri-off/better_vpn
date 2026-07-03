@@ -5,14 +5,13 @@ diesel::table! {
     vpn_users (id) {
         id -> Int4,
         username -> Text,
-        token_hash -> Text,
         enabled -> Bool,
         expires_at -> Nullable<TimestamptzSqlite>,
         quota_bytes -> Int8,
         used_bytes -> Int8,
         note -> Text,
         created_at -> TimestamptzSqlite,
-        token -> Nullable<Text>,
+        token -> Text,
         total_tx -> Int8,
         total_rx -> Int8,
     }

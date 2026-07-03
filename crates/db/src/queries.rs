@@ -48,11 +48,11 @@ pub fn user_by_username(conn: &mut DbConn, name: &str) -> Result<Option<VpnUser>
         .optional()?)
 }
 
-/// Resolve a user by the SHA-256 hash of their auth token. Hot path for the
-/// Hysteria auth endpoint.
-pub fn user_by_token_hash(conn: &mut DbConn, token_hash: &str) -> Result<Option<VpnUser>, DbError> {
+/// Resolve a user by their plaintext auth token. Hot path for the Hysteria
+/// auth endpoint.
+pub fn user_by_token(conn: &mut DbConn, token: &str) -> Result<Option<VpnUser>, DbError> {
     Ok(vpn_users::table
-        .filter(vpn_users::token_hash.eq(token_hash))
+        .filter(vpn_users::token.eq(token))
         .select(VpnUser::as_select())
         .first(conn)
         .optional()?)

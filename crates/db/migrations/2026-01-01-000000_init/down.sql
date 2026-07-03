@@ -1,4 +1,3 @@
 DROP TABLE IF EXISTS settings;
 DROP TABLE IF EXISTS online_state;
 DROP TABLE IF EXISTS vpn_users;
-DROP TABLE IF EXISTS admins;

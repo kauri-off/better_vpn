@@ -10,16 +10,15 @@ use diesel::prelude::*;
 pub struct VpnUser {
     pub id: i32,
     pub username: String,
-    pub token_hash: String,
     pub enabled: bool,
     pub expires_at: Option<DateTime<Utc>>,
     pub quota_bytes: i64,
     pub used_bytes: i64,
     pub note: String,
     pub created_at: DateTime<Utc>,
-    /// Plaintext auth token, persisted so the panel can re-show the connection
-    /// URI/QR. NULL for users created before the token column existed.
-    pub token: Option<String>,
+    /// Plaintext auth token. Persisted so the panel can re-show the connection
+    /// URI/QR, and used directly as the Hysteria auth lookup key.
+    pub token: String,
     /// Lifetime uploaded/downloaded bytes. Unlike `used_bytes`, these are never
     /// zeroed by a quota reset and feed the panel's all-time traffic totals.
     pub total_tx: i64,
@@ -30,7 +29,6 @@ pub struct VpnUser {
 #[diesel(table_name = vpn_users)]
 pub struct NewVpnUser<'a> {
     pub username: &'a str,
-    pub token_hash: &'a str,
     pub enabled: bool,
     pub expires_at: Option<DateTime<Utc>>,
     pub quota_bytes: i64,

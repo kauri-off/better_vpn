@@ -1,7 +1,7 @@
 //! HTTP auth backend for Hysteria's `auth.type: http`.
 //!
 //! Hysteria POSTs `{ "addr": "ip:port", "auth": "<token>", "tx": <bytes/s> }`
-//! on each new connection. We resolve the user by token hash and authorize
+//! on each new connection. We resolve the user by their token and authorize
 //! based on enabled / expiry / quota. A successful reply is
 //! `200 { "ok": true, "id": "<username>" }`; the `id` becomes the key used by
 //! the Traffic Stats API.
@@ -9,7 +9,6 @@
 use crate::state::AppState;
 use axum::{extract::State, routing::post, Json, Router};
 use serde::{Deserialize, Serialize};
-use vpn_common::token::hash_token;
 use vpn_db::queries;
 
 #[derive(Debug, Deserialize)]
@@ -44,7 +43,6 @@ async fn handle_auth(
         id: String::new(),
     });
 
-    let token_hash = hash_token(&req.auth);
     let mut conn = match state.pool.get() {
         Ok(c) => c,
         Err(e) => {
@@ -53,7 +51,7 @@ async fn handle_auth(
         }
     };
 
-    let user = match queries::user_by_token_hash(&mut conn, &token_hash) {
+    let user = match queries::user_by_token(&mut conn, &req.auth) {
         Ok(Some(u)) => u,
         Ok(None) => return deny,
         Err(e) => {

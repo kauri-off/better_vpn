@@ -512,10 +512,8 @@ impl PanelService for PanelSvc {
             return Err(Status::invalid_argument("username is required"));
         }
         let token = generate_token();
-        let token_hash = hash_token(&token);
         let new = vpn_db::models::NewVpnUser {
             username: &req.username,
-            token_hash: &token_hash,
             enabled: req.enabled,
             expires_at: from_ts(req.expires_at),
             quota_bytes: req.quota_bytes,
@@ -546,16 +544,9 @@ impl PanelService for PanelSvc {
         let mut conn = self.state.pool.get().map_err(db_err)?;
         let u =
             queries::user_by_id(&mut conn, id).map_err(|_| Status::not_found("user not found"))?;
-        // Legacy users predating token storage have no recoverable token; return
-        // an empty config so the UI can explain instead of erroring.
-        let (auth_token, connection_uri, qr_svg) = match u.token {
-            Some(token) if !token.is_empty() => {
-                let uri = self.connection_uri(&token, &u.username, &req.link_host);
-                let qr = Self::qr_svg(&uri);
-                (token, uri, qr)
-            }
-            _ => (String::new(), String::new(), String::new()),
-        };
+        let uri = self.connection_uri(&u.token, &u.username, &req.link_host);
+        let qr_svg = Self::qr_svg(&uri);
+        let (auth_token, connection_uri) = (u.token, uri);
         Ok(Response::new(pb::UserConfigResponse {
             username: u.username,
             auth_token,
