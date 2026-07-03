@@ -1,9 +1,10 @@
 //! Background poller: pulls traffic + online state from the Hysteria Traffic
-//! Stats API, accumulates usage into Postgres, and enforces quota/expiry by
-//! kicking offending clients.
+//! Stats API, accumulates usage into SQLite, publishes online presence to the
+//! in-memory snapshot, and enforces quota/expiry by kicking offending clients.
 
 use crate::settings::Settings;
 use crate::state::AppState;
+use std::collections::HashMap;
 use std::time::Duration;
 use vpn_db::queries;
 
@@ -27,7 +28,7 @@ async fn tick(state: &AppState) -> anyhow::Result<()> {
     let online = client.online().await?;
 
     let mut to_kick: Vec<String> = Vec::new();
-    let mut online_ids: Vec<i32> = Vec::new();
+    let mut online_map: HashMap<i32, i32> = HashMap::new();
 
     {
         let mut conn = state.pool.get()?;
@@ -49,8 +50,7 @@ async fn tick(state: &AppState) -> anyhow::Result<()> {
             let Some(user) = queries::user_by_username(&mut conn, username)? else {
                 continue;
             };
-            queries::upsert_online(&mut conn, user.id, connections, Some(now))?;
-            online_ids.push(user.id);
+            online_map.insert(user.id, connections);
 
             // 3. Enforce expiry/quota on currently-online users.
             let expired = user.expires_at.map(|e| e <= now).unwrap_or(false);
@@ -60,9 +60,13 @@ async fn tick(state: &AppState) -> anyhow::Result<()> {
             }
         }
 
-        // Zero out connection counts for users no longer reported online.
-        queries::clear_online_except(&mut conn, &online_ids)?;
+        let online_ids: Vec<i32> = online_map.keys().copied().collect();
+        queries::touch_last_seen(&mut conn, &online_ids, now)?;
     }
+
+    // Publish this tick's presence snapshot; users absent from the map are
+    // offline (replacing the map handles what clear_online_except used to).
+    state.set_online(online_map);
 
     if !to_kick.is_empty() {
         tracing::info!("kicking {} client(s) over limit/disabled", to_kick.len());

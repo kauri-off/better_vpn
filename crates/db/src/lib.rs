@@ -22,7 +22,7 @@ pub type DbConn = PooledConnection<ConnectionManager<SqliteConnection>>;
 /// pool opens up to `max_size`): `busy_timeout` so concurrent writers (the stats
 /// poller alongside gRPC handlers) wait instead of erroring "database is locked",
 /// WAL for reader/writer concurrency, and `foreign_keys` because SQLite defaults
-/// it OFF (required for `online_state`'s ON DELETE CASCADE).
+/// it OFF (no current table relies on it, but any future FK should just work).
 #[derive(Debug)]
 struct SqlitePragmas;
 

@@ -14,13 +14,6 @@ diesel::table! {
         token -> Text,
         total_tx -> Int8,
         total_rx -> Int8,
-    }
-}
-
-diesel::table! {
-    online_state (user_id) {
-        user_id -> Int4,
-        connections -> Int4,
         last_seen -> Nullable<TimestamptzSqlite>,
     }
 }
@@ -32,6 +25,4 @@ diesel::table! {
     }
 }
 
-diesel::joinable!(online_state -> vpn_users (user_id));
-
-diesel::allow_tables_to_appear_in_same_query!(vpn_users, online_state, settings,);
+diesel::allow_tables_to_appear_in_same_query!(vpn_users, settings,);

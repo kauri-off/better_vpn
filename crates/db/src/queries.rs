@@ -1,7 +1,7 @@
 //! Typed query helpers. All take a `&mut DbConn`.
 
 use crate::models::*;
-use crate::schema::{online_state, settings, vpn_users};
+use crate::schema::{settings, vpn_users};
 use crate::{DbConn, DbError};
 use chrono::{DateTime, Utc};
 use diesel::prelude::*;
@@ -120,51 +120,15 @@ pub fn usage_totals(conn: &mut DbConn) -> Result<(i64, i64), DbError> {
     Ok(totals)
 }
 
-// ---------------- online state ----------------
-
-pub fn upsert_online(
-    conn: &mut DbConn,
-    user_id: i32,
-    connections: i32,
-    last_seen: Option<DateTime<Utc>>,
-) -> Result<(), DbError> {
-    diesel::insert_into(online_state::table)
-        .values((
-            online_state::user_id.eq(user_id),
-            online_state::connections.eq(connections),
-            online_state::last_seen.eq(last_seen),
-        ))
-        .on_conflict(online_state::user_id)
-        .do_update()
-        .set((
-            online_state::connections.eq(connections),
-            online_state::last_seen.eq(last_seen),
-        ))
+/// Stamp `last_seen = now` for the given (currently online) users.
+pub fn touch_last_seen(conn: &mut DbConn, ids: &[i32], now: DateTime<Utc>) -> Result<(), DbError> {
+    if ids.is_empty() {
+        return Ok(());
+    }
+    diesel::update(vpn_users::table.filter(vpn_users::id.eq_any(ids.to_vec())))
+        .set(vpn_users::last_seen.eq(Some(now)))
         .execute(conn)?;
     Ok(())
-}
-
-/// Set connection counts to zero for users not currently online.
-pub fn clear_online_except(conn: &mut DbConn, keep: &[i32]) -> Result<(), DbError> {
-    diesel::update(online_state::table.filter(online_state::user_id.ne_all(keep.to_vec())))
-        .set(online_state::connections.eq(0))
-        .execute(conn)?;
-    Ok(())
-}
-
-pub fn online_for(conn: &mut DbConn, user_id: i32) -> Result<Option<OnlineState>, DbError> {
-    Ok(online_state::table
-        .find(user_id)
-        .select(OnlineState::as_select())
-        .first(conn)
-        .optional()?)
-}
-
-pub fn online_count(conn: &mut DbConn) -> Result<i64, DbError> {
-    Ok(online_state::table
-        .filter(online_state::connections.gt(0))
-        .count()
-        .get_result(conn)?)
 }
 
 // ---------------- settings ----------------

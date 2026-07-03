@@ -45,6 +45,11 @@ export const transport = createGrpcWebTransport({
 
 export const client: Client<typeof PanelService> = createClient(PanelService, transport);
 
+// UI polling cadence for live data (dashboard, users table). The backend's
+// stats poller refreshes its data on a >=2s interval, so 3s here means the UI
+// is at most one tick stale.
+export const POLL_MS = 3000;
+
 // ---- formatting helpers (proto int64 -> bigint) ----
 
 export function fmtBytes(n: bigint | number): string {

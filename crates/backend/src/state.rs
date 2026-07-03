@@ -5,6 +5,7 @@ use crate::hysteria::client::StatsClient;
 use crate::login_throttle::LoginThrottle;
 use crate::settings::Settings;
 use crate::sysmon::SysMonitor;
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use vpn_db::DbPool;
@@ -19,6 +20,10 @@ pub struct AppState {
     /// (or invalidated after a restart/update); `Some("")` => probe failed, so
     /// we don't re-spawn the binary on every stats poll.
     core_version: Arc<RwLock<Option<String>>>,
+    /// user_id -> live connection count. Replaced wholesale by the stats poller
+    /// each tick, so readers only ever see a complete snapshot. std (not tokio)
+    /// lock: it is never held across an await.
+    online: Arc<std::sync::RwLock<HashMap<i32, i32>>>,
 }
 
 impl AppState {
@@ -28,7 +33,33 @@ impl AppState {
             sys: SysMonitor::new(),
             login_throttle: Arc::new(LoginThrottle::new()),
             core_version: Arc::new(RwLock::new(None)),
+            online: Arc::new(std::sync::RwLock::new(HashMap::new())),
         }
+    }
+
+    /// Replace the online snapshot with this tick's poll result.
+    pub fn set_online(&self, map: HashMap<i32, i32>) {
+        *self.online.write().unwrap() = map;
+    }
+
+    /// Live connection count for a user (0 = offline).
+    pub fn connections_for(&self, user_id: i32) -> i32 {
+        self.online
+            .read()
+            .unwrap()
+            .get(&user_id)
+            .copied()
+            .unwrap_or(0)
+    }
+
+    /// Number of users currently online.
+    pub fn online_count(&self) -> i32 {
+        self.online
+            .read()
+            .unwrap()
+            .values()
+            .filter(|&&c| c > 0)
+            .count() as i32
     }
 
     /// The running core's version, detected by probing the binary and cached.

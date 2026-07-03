@@ -23,6 +23,8 @@ pub struct VpnUser {
     /// zeroed by a quota reset and feed the panel's all-time traffic totals.
     pub total_tx: i64,
     pub total_rx: i64,
+    /// Last time the stats poller saw this user online. NULL = never.
+    pub last_seen: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Insertable)]
@@ -46,16 +48,6 @@ pub struct VpnUserChanges {
     pub quota_bytes: Option<i64>,
     pub used_bytes: Option<i64>,
     pub note: Option<String>,
-}
-
-#[derive(Debug, Clone, Queryable, Selectable, Identifiable)]
-#[diesel(table_name = online_state)]
-#[diesel(primary_key(user_id))]
-#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
-pub struct OnlineState {
-    pub user_id: i32,
-    pub connections: i32,
-    pub last_seen: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, Queryable, Selectable, Insertable)]

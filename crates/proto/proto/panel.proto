@@ -25,10 +25,6 @@ service PanelService {
 
   // ---- VPN users ----
   rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
-  // Live user list: streams a fresh ListUsersResponse immediately, then again
-  // on every background stats-poll tick (online counts / usage change there),
-  // until the client disconnects. Powers the auto-updating Users table.
-  rpc StreamUsers(ListUsersRequest) returns (stream ListUsersResponse);
   rpc GetUser(GetUserRequest) returns (VpnUser);
   rpc CreateUser(CreateUserRequest) returns (CreateUserResponse);
   // Re-fetch a user's stored connection URI / token / QR (for the share screen).
@@ -41,11 +37,8 @@ service PanelService {
   rpc ResetUserUsage(GetUserRequest) returns (VpnUser);
 
   // ---- Stats ----
+  // Clients poll this (the backend refreshes its data on the stats-poll tick).
   rpc GetServerStats(Empty) returns (ServerStats);
-  // Live server stats: streams a fresh ServerStats immediately, then again on
-  // every background stats-poll tick, until the client disconnects. Powers the
-  // auto-updating dashboard.
-  rpc StreamServerStats(Empty) returns (stream ServerStats);
 
   // ---- Core control ----
   // Restart the Hysteria core service to apply config/cert changes on disk.

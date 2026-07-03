@@ -15,51 +15,32 @@ import {
   Wifi,
 } from "lucide-react";
 import { toast } from "sonner";
-import { client, fmtBytes, fmtDuration, fmtRate } from "../api";
-import type { ServerStats } from "../gen/panel_pb";
+import { useQuery } from "@connectrpc/connect-query";
+import { getServerStats } from "../gen/panel-PanelService_connectquery";
+import { POLL_MS, fmtBytes, fmtDuration, fmtRate } from "../api";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Skeleton } from "../components/ui/skeleton";
 import { cn } from "../lib/utils";
 
 export default function Stats() {
   const [showIps, setShowIps] = useState(false);
-  const [stats, setStats] = useState<ServerStats | null>(null);
-  const [loading, setLoading] = useState(true);
 
-  // Live stats stream: the server pushes a fresh snapshot immediately, then on
-  // every poll tick, so the dashboard updates without client-side polling
-  // (mirrors the Users table's StreamUsers).
+  // Poll a fresh snapshot on the backend's stats cadence. On a failed tick
+  // react-query keeps showing the last good data and retries on the next one.
+  const {
+    data: stats,
+    isLoading: loading,
+    error,
+  } = useQuery(getServerStats, {}, { refetchInterval: POLL_MS });
+
+  // Stable toast id: repeated failures update one toast instead of stacking.
   useEffect(() => {
-    const ctrl = new AbortController();
-
-    async function runStream() {
-      // Reconnect loop: the server stream is open-ended, so `for await` only
-      // ends on error or abort. On an unexpected error, back off and retry so a
-      // transient blip (core restart, network hiccup) self-heals.
-      while (!ctrl.signal.aborted) {
-        try {
-          const stream = client.streamServerStats({}, { signal: ctrl.signal });
-          for await (const resp of stream) {
-            setStats(resp);
-            toast.dismiss("stats-stream");
-            setLoading(false);
-          }
-        } catch (err) {
-          if (ctrl.signal.aborted) return;
-          // Stable id: retry failures update one toast instead of stacking.
-          toast.error(err instanceof Error ? err.message : String(err), { id: "stats-stream" });
-          setLoading(false);
-          await new Promise((r) => setTimeout(r, 3000));
-        }
-      }
-    }
-
-    void runStream();
+    if (error) toast.error(error.message, { id: "stats-poll" });
+    else toast.dismiss("stats-poll");
     return () => {
-      ctrl.abort();
-      toast.dismiss("stats-stream");
+      toast.dismiss("stats-poll");
     };
-  }, []);
+  }, [error]);
 
   return (
     <div className="flex flex-col gap-6">

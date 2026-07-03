@@ -12,9 +12,6 @@ use percent_encoding::{utf8_percent_encode, AsciiSet, NON_ALPHANUMERIC};
 use qrcode::render::svg;
 use qrcode::QrCode;
 use std::path::Path;
-use std::pin::Pin;
-use std::time::Duration;
-use tokio_stream::{wrappers::ReceiverStream, Stream};
 use tonic::{Request, Response, Status};
 use vpn_common::settings_keys as k;
 use vpn_common::token::{generate_token, hash_token, verify_token};
@@ -81,12 +78,9 @@ fn db_err<E: std::fmt::Display>(e: E) -> Status {
     Status::internal(format!("db error: {e}"))
 }
 
-/// Map a DB user row to its proto form, joining in live online/last-seen state.
-fn to_proto_user(u: vpn_db::models::VpnUser, conn: &mut vpn_db::DbConn) -> pb::VpnUser {
-    let online = queries::online_for(conn, u.id).ok().flatten();
-    let (connections, last_seen) = online
-        .map(|o| (o.connections, opt_ts(o.last_seen)))
-        .unwrap_or((0, 0));
+/// Map a DB user row to its proto form, joining in the live connection count
+/// from the in-memory online snapshot.
+fn to_proto_user(u: vpn_db::models::VpnUser, state: &AppState) -> pb::VpnUser {
     pb::VpnUser {
         id: u.id,
         username: u.username,
@@ -94,15 +88,14 @@ fn to_proto_user(u: vpn_db::models::VpnUser, conn: &mut vpn_db::DbConn) -> pb::V
         expires_at: opt_ts(u.expires_at),
         quota_bytes: u.quota_bytes,
         used_bytes: u.used_bytes,
-        connections,
-        last_seen,
+        connections: state.connections_for(u.id),
+        last_seen: opt_ts(u.last_seen),
         created_at: ts(u.created_at),
         note: u.note,
     }
 }
 
-/// Run a user search and assemble the paged `ListUsersResponse`. Shared by the
-/// unary `ListUsers` and the streaming `StreamUsers`.
+/// Run a user search and assemble the paged `ListUsersResponse`.
 fn build_users_response(
     state: &AppState,
     req: &pb::ListUsersRequest,
@@ -115,25 +108,22 @@ fn build_users_response(
     let mut conn = state.pool.get().map_err(db_err)?;
     let (rows, total) =
         queries::list_users(&mut conn, &req.search, limit, req.offset as i64).map_err(db_err)?;
-    let users = rows
-        .into_iter()
-        .map(|u| to_proto_user(u, &mut conn))
-        .collect();
+    drop(conn);
+    let users = rows.into_iter().map(|u| to_proto_user(u, state)).collect();
     Ok(pb::ListUsersResponse {
         users,
         total: total as i32,
     })
 }
 
-/// Assemble the current `ServerStats` snapshot. Shared by the unary
-/// `GetServerStats` and the streaming `StreamServerStats`.
+/// Assemble the current `ServerStats` snapshot.
 async fn build_server_stats(state: &AppState) -> Result<pb::ServerStats, Status> {
     let mut conn = state.pool.get().map_err(db_err)?;
     let (_, total_users) = queries::list_users(&mut conn, "", 0, 0).map_err(db_err)?;
-    let online_users = queries::online_count(&mut conn).map_err(db_err)? as i32;
     // All-time user traffic, split into uploaded (tx) / downloaded (rx).
     let (total_tx, total_rx) = queries::usage_totals(&mut conn).map_err(db_err)?;
     drop(conn);
+    let online_users = state.online_count();
     let core_running = state.stats_client().is_alive().await;
     let sys = state.sys.snapshot();
     Ok(pb::ServerStats {
@@ -452,44 +442,6 @@ impl PanelService for PanelSvc {
         Ok(Response::new(build_users_response(&self.state, &req)?))
     }
 
-    type StreamUsersStream =
-        Pin<Box<dyn Stream<Item = Result<pb::ListUsersResponse, Status>> + Send>>;
-
-    async fn stream_users(
-        &self,
-        request: Request<pb::ListUsersRequest>,
-    ) -> Result<Response<Self::StreamUsersStream>, Status> {
-        // Authorize once up front; the token is validated here and the long-lived
-        // stream then rides that decision (no per-tick re-check needed).
-        check_auth(&self.state, &request)?;
-        let req = request.into_inner();
-        let state = self.state.clone();
-
-        // Small buffer: the consumer only ever wants the latest snapshot, and a
-        // slow client applies natural backpressure via the bounded channel.
-        let (tx, rx) = tokio::sync::mpsc::channel(4);
-        tokio::spawn(async move {
-            loop {
-                let msg = build_users_response(&state, &req);
-                let was_err = msg.is_err();
-                // A send error means the client hung up; stop the loop and let the
-                // spawned task (and its DB work) fall away.
-                if tx.send(msg).await.is_err() {
-                    break;
-                }
-                if was_err {
-                    break; // surface one error to the client, then close.
-                }
-                // Re-emit on the same cadence the poller refreshes the DB, so the
-                // table tracks online/usage changes without redundant pushes.
-                let interval = Settings::poll_interval_secs(&state.pool).max(2);
-                tokio::time::sleep(Duration::from_secs(interval)).await;
-            }
-        });
-
-        Ok(Response::new(Box::pin(ReceiverStream::new(rx))))
-    }
-
     async fn get_user(
         &self,
         request: Request<pb::GetUserRequest>,
@@ -499,7 +451,7 @@ impl PanelService for PanelSvc {
         let mut conn = self.state.pool.get().map_err(db_err)?;
         let u =
             queries::user_by_id(&mut conn, id).map_err(|_| Status::not_found("user not found"))?;
-        Ok(Response::new(to_proto_user(u, &mut conn)))
+        Ok(Response::new(to_proto_user(u, &self.state)))
     }
 
     async fn create_user(
@@ -525,7 +477,7 @@ impl PanelService for PanelSvc {
             .map_err(|e| Status::already_exists(format!("could not create user: {e}")))?;
         let uri = self.connection_uri(&token, &u.username, &req.link_host);
         let qr_svg = Self::qr_svg(&uri);
-        let user = to_proto_user(u, &mut conn);
+        let user = to_proto_user(u, &self.state);
         Ok(Response::new(pb::CreateUserResponse {
             user: Some(user),
             auth_token: token,
@@ -571,7 +523,7 @@ impl PanelService for PanelSvc {
         let mut conn = self.state.pool.get().map_err(db_err)?;
         let u = queries::update_user(&mut conn, req.id, changes)
             .map_err(|_| Status::not_found("user not found"))?;
-        Ok(Response::new(to_proto_user(u, &mut conn)))
+        Ok(Response::new(to_proto_user(u, &self.state)))
     }
 
     async fn delete_user(
@@ -611,7 +563,7 @@ impl PanelService for PanelSvc {
         let id = request.into_inner().id;
         let mut conn = self.state.pool.get().map_err(db_err)?;
         let u = queries::reset_usage(&mut conn, id).map_err(db_err)?;
-        Ok(Response::new(to_proto_user(u, &mut conn)))
+        Ok(Response::new(to_proto_user(u, &self.state)))
     }
 
     async fn get_server_stats(
@@ -620,42 +572,6 @@ impl PanelService for PanelSvc {
     ) -> Result<Response<pb::ServerStats>, Status> {
         check_auth(&self.state, &request)?;
         Ok(Response::new(build_server_stats(&self.state).await?))
-    }
-
-    type StreamServerStatsStream =
-        Pin<Box<dyn Stream<Item = Result<pb::ServerStats, Status>> + Send>>;
-
-    async fn stream_server_stats(
-        &self,
-        request: Request<pb::Empty>,
-    ) -> Result<Response<Self::StreamServerStatsStream>, Status> {
-        // Authorize once up front; the long-lived stream then rides that decision
-        // (mirrors StreamUsers — no per-tick re-check needed).
-        check_auth(&self.state, &request)?;
-        let state = self.state.clone();
-
-        // Small buffer: the dashboard only ever wants the latest snapshot, and a
-        // slow client applies natural backpressure via the bounded channel.
-        let (tx, rx) = tokio::sync::mpsc::channel(4);
-        tokio::spawn(async move {
-            loop {
-                let msg = build_server_stats(&state).await;
-                let was_err = msg.is_err();
-                // A send error means the client hung up; stop the loop and let the
-                // spawned task (and its DB work) fall away.
-                if tx.send(msg).await.is_err() {
-                    break;
-                }
-                if was_err {
-                    break; // surface one error to the client, then close.
-                }
-                // Re-emit on the same cadence the poller refreshes the DB / sysmon.
-                let interval = Settings::poll_interval_secs(&state.pool).max(2);
-                tokio::time::sleep(Duration::from_secs(interval)).await;
-            }
-        });
-
-        Ok(Response::new(Box::pin(ReceiverStream::new(rx))))
     }
 
     async fn restart_core(

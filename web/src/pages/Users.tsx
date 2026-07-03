@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
   Ban,
@@ -12,8 +12,10 @@ import {
   Search,
   Trash2,
 } from "lucide-react";
-import { useMutation } from "@connectrpc/connect-query";
+import { useMutation, useQuery } from "@connectrpc/connect-query";
+import { keepPreviousData } from "@tanstack/react-query";
 import {
+  listUsers,
   updateUser,
   kickUser,
   resetUserUsage,
@@ -21,7 +23,7 @@ import {
   createUser,
   getUserConfig,
 } from "../gen/panel-PanelService_connectquery";
-import { client, fmtBytes, fmtTs } from "../api";
+import { POLL_MS, fmtBytes, fmtTs } from "../api";
 import { copyText } from "../lib/utils";
 import type { VpnUser } from "../gen/panel_pb";
 import { Button } from "../components/ui/button";
@@ -56,9 +58,8 @@ import {
 } from "../components/ui/dropdown-menu";
 
 export default function Users() {
-  const [users, setUsers] = useState<VpnUser[]>([]);
   const [search, setSearch] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [debouncedSearch, setDebouncedSearch] = useState("");
 
   const [createOpen, setCreateOpen] = useState(false);
   const [created, setCreated] = useState<
@@ -66,74 +67,48 @@ export default function Users() {
   >(null);
   const [confirmDelete, setConfirmDelete] = useState<VpnUser | null>(null);
 
-  // The live stream (re-created per search term) owns the users list. This ref
-  // lets one-shot refreshes after mutations avoid racing a stale write in: only
-  // the newest stream/refresh, tagged with the current generation, may commit.
-  const gen = useRef(0);
-
-  // Row mutations. The list itself is owned by the stream (not the react-query
-  // cache), so there's nothing to invalidate — `act()` calls refresh() for
-  // instant feedback and the stream reconciles on its next tick.
+  // Row mutations. `act()` refetches the list for instant feedback; the poll
+  // keeps it fresh afterwards.
   const updateUserMutation = useMutation(updateUser);
   const kickUserMutation = useMutation(kickUser);
   const resetUsageMutation = useMutation(resetUserUsage);
   const deleteUserMutation = useMutation(deleteUser);
   const userConfigMutation = useMutation(getUserConfig);
 
+  // Debounce per-keystroke search so we don't refetch on every letter.
   useEffect(() => {
-    const myGen = ++gen.current;
-    const ctrl = new AbortController();
-
-    // Debounce per-keystroke search so we don't reopen a stream on every letter.
-    const startTimer = setTimeout(() => void runStream(), 250);
-
-    async function runStream() {
-      // Reconnect loop: the server stream is open-ended, so `for await` only
-      // ends on error or abort. On an unexpected error, back off and retry so a
-      // transient blip (core restart, network hiccup) self-heals.
-      while (!ctrl.signal.aborted) {
-        try {
-          const stream = client.streamUsers({ search, limit: 200, offset: 0 }, { signal: ctrl.signal });
-          for await (const resp of stream) {
-            if (myGen !== gen.current) return;
-            setUsers(resp.users);
-            toast.dismiss("users-stream");
-            setLoading(false);
-          }
-        } catch (err) {
-          if (ctrl.signal.aborted || myGen !== gen.current) return;
-          // Stable id: retry failures update one toast instead of stacking.
-          toast.error(err instanceof Error ? err.message : String(err), { id: "users-stream" });
-          setLoading(false);
-          await new Promise((r) => setTimeout(r, 3000));
-        }
-      }
-    }
-
-    return () => {
-      clearTimeout(startTimer);
-      ctrl.abort();
-      toast.dismiss("users-stream");
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const t = setTimeout(() => setDebouncedSearch(search), 250);
+    return () => clearTimeout(t);
   }, [search]);
 
-  // One-shot refresh for instant feedback after a mutation, without waiting for
-  // the next stream tick. Guarded by `gen` so it can't clobber a newer stream.
-  async function refresh() {
-    const myGen = gen.current;
-    try {
-      const resp = await client.listUsers({ search, limit: 200, offset: 0 });
-      if (myGen === gen.current) setUsers(resp.users);
-    } catch {
-      // The live stream is the source of truth; ignore a failed nicety refresh.
-    }
-  }
+  // Poll the list on the backend's stats cadence (online counts / usage change
+  // there). keepPreviousData holds the current rows while a new search loads,
+  // so typing filters without skeleton flicker.
+  const {
+    data,
+    isLoading: loading,
+    error,
+    refetch,
+  } = useQuery(
+    listUsers,
+    { search: debouncedSearch, limit: 200, offset: 0 },
+    { refetchInterval: POLL_MS, placeholderData: keepPreviousData },
+  );
+  const users = data?.users ?? [];
+
+  // Stable toast id: repeated failures update one toast instead of stacking.
+  useEffect(() => {
+    if (error) toast.error(error.message, { id: "users-poll" });
+    else toast.dismiss("users-poll");
+    return () => {
+      toast.dismiss("users-poll");
+    };
+  }, [error]);
 
   async function act(label: string, fn: () => Promise<unknown>) {
     try {
       await fn();
-      await refresh();
+      await refetch();
       toast.success(label);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
@@ -287,7 +262,7 @@ export default function Users() {
         onOpenChange={setCreateOpen}
         onCreated={(c) => {
           setCreated({ ...c, fresh: true });
-          refresh();
+          void refetch();
         }}
       />
 
