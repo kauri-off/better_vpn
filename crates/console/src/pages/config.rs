@@ -57,6 +57,18 @@ fn edit(ctx: &mut Ctx) {
     };
     s.listen = listen;
 
+    // tls
+    let mut tls = s.tls.clone().unwrap_or_default();
+    let Ok(cert) = ui::input_default("tls cert path", &tls.cert) else {
+        return;
+    };
+    let Ok(key) = ui::input_default("tls key path", &tls.key) else {
+        return;
+    };
+    tls.cert = cert;
+    tls.key = key;
+    s.tls = Some(tls);
+
     // obfs
     let mut obfs = s.obfs.clone().unwrap_or_default();
     let Ok(otype) = ui::input_default("obfs type (blank = off; salamander)", &obfs.r#type) else {
@@ -111,6 +123,57 @@ fn edit(ctx: &mut Ctx) {
         _ => {}
     }
     s.masquerade = Some(mq);
+
+    // acl (inline rules; ';' separator since rules contain commas)
+    let acl = s.acl.clone().unwrap_or_default();
+    let Ok(rules) = ui::input_default(
+        "acl inline rules (';'-separated, blank = none)",
+        &acl.inline.join("; "),
+    ) else {
+        return;
+    };
+    s.acl = Some(pb::Acl {
+        inline: rules
+            .split(';')
+            .map(str::trim)
+            .filter(|r| !r.is_empty())
+            .map(str::to_string)
+            .collect(),
+    });
+
+    // resolver
+    let mut rv = s.resolver.clone().unwrap_or_default();
+    let Ok(rtype) = ui::input_default(
+        "resolver type (blank = none; dns/udp/tcp/tls/https)",
+        &rv.r#type,
+    ) else {
+        return;
+    };
+    rv.r#type = rtype.trim().to_string();
+    if rv.r#type.is_empty() {
+        rv.addr.clear();
+        rv.timeout.clear();
+        rv.sni.clear();
+    } else {
+        let Ok(addr) = ui::input_default("resolver addr (e.g. 1.1.1.1:443)", &rv.addr) else {
+            return;
+        };
+        let Ok(timeout) = ui::input_default("resolver timeout (e.g. 10s, blank = default)", &rv.timeout)
+        else {
+            return;
+        };
+        rv.addr = addr;
+        rv.timeout = timeout;
+        if matches!(rv.r#type.as_str(), "tls" | "https") {
+            let Ok(sni) = ui::input_default("resolver sni", &rv.sni) else {
+                return;
+            };
+            rv.sni = sni;
+        } else {
+            rv.sni.clear();
+        }
+    }
+    s.resolver = Some(rv);
 
     let Some(req) = ui::report(authed(pb::UpdateConfigRequest {
         structured: Some(s),

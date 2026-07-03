@@ -30,12 +30,15 @@ export default function Config() {
   const transport = useTransport();
 
   // Full structured view as loaded — the source of truth for fields the form
-  // does not edit (listen/tls), which must round-trip untouched because
-  // UpdateConfig rewrites every managed key from the submitted object.
+  // does not edit (listen, owned by Settings → Connection), which must
+  // round-trip untouched because UpdateConfig rewrites every managed key from
+  // the submitted object.
   const [structured, setStructured] = useState<HysteriaConfig | undefined>();
   const [raw, setRaw] = useState("");
 
   // Editable structured fields.
+  const [tlsCert, setTlsCert] = useState("");
+  const [tlsKey, setTlsKey] = useState("");
   const [obfsEnabled, setObfsEnabled] = useState(false);
   const [obfsPassword, setObfsPassword] = useState("");
   const [bwUp, setBwUp] = useState("");
@@ -43,11 +46,18 @@ export default function Config() {
   const [masqType, setMasqType] = useState("");
   const [masqProxyUrl, setMasqProxyUrl] = useState("");
   const [masqStringContent, setMasqStringContent] = useState("");
+  const [aclText, setAclText] = useState("");
+  const [resolverType, setResolverType] = useState("");
+  const [resolverAddr, setResolverAddr] = useState("");
+  const [resolverTimeout, setResolverTimeout] = useState("");
+  const [resolverSni, setResolverSni] = useState("");
 
   function hydrate(c: ConfigResponse) {
     setRaw(c.rawYaml);
     setStructured(c.structured);
     const s = c.structured;
+    setTlsCert(s?.tls?.cert ?? "");
+    setTlsKey(s?.tls?.key ?? "");
     setObfsEnabled(s?.obfs?.type?.toLowerCase() === "salamander");
     setObfsPassword(s?.obfs?.password ?? "");
     setBwUp(s?.bandwidth?.up ?? "");
@@ -55,6 +65,11 @@ export default function Config() {
     setMasqType(s?.masquerade?.type ?? "");
     setMasqProxyUrl(s?.masquerade?.proxyUrl ?? "");
     setMasqStringContent(s?.masquerade?.stringContent ?? "");
+    setAclText((s?.acl?.inline ?? []).join("\n"));
+    setResolverType(s?.resolver?.type ?? "");
+    setResolverAddr(s?.resolver?.addr ?? "");
+    setResolverTimeout(s?.resolver?.timeout ?? "");
+    setResolverSni(s?.resolver?.sni ?? "");
   }
 
   const { data, isLoading: loading, error, refetch } = useQuery(getConfig, {});
@@ -104,12 +119,12 @@ export default function Config() {
   const savingRaw = updateRawMutation.isPending;
 
   function saveStructured() {
-    // Carry listen/tls through unchanged (they're owned by the Settings cert
-    // flow / raw editor); overwrite only the fields this form owns.
+    // Carry listen through unchanged (owned by Settings → Connection);
+    // overwrite only the fields this form owns.
     updateConfigMutation.mutate({
       structured: {
         listen: structured?.listen ?? "",
-        tls: structured?.tls,
+        tls: { cert: tlsCert.trim(), key: tlsKey.trim() },
         obfs: {
           type: obfsEnabled ? "salamander" : "",
           password: obfsEnabled ? obfsPassword : "",
@@ -119,6 +134,18 @@ export default function Config() {
           type: masqType,
           proxyUrl: masqType === "proxy" ? masqProxyUrl.trim() : "",
           stringContent: masqType === "string" ? masqStringContent : "",
+        },
+        acl: {
+          inline: aclText
+            .split("\n")
+            .map((r) => r.trim())
+            .filter(Boolean),
+        },
+        resolver: {
+          type: resolverType,
+          addr: resolverType ? resolverAddr.trim() : "",
+          timeout: resolverType ? resolverTimeout.trim() : "",
+          sni: resolverType === "tls" || resolverType === "https" ? resolverSni.trim() : "",
         },
       },
     });
@@ -143,6 +170,39 @@ export default function Config() {
         <Skeleton className="h-[420px]" />
       ) : (
         <>
+          {/* ---- TLS ---- */}
+          <Card>
+            <CardHeader>
+              <CardTitle>TLS</CardTitle>
+              <p className="text-sm text-muted">
+                Paths to the certificate and key files on the server. Generating a certificate on
+                the Settings page overwrites these. The core won't start without a valid pair.
+              </p>
+            </CardHeader>
+            <CardContent className="grid gap-4 sm:grid-cols-2">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="tls_cert">Certificate path</Label>
+                <Input
+                  id="tls_cert"
+                  value={tlsCert}
+                  onChange={(e) => setTlsCert(e.target.value)}
+                  placeholder="/etc/hysteria/fullchain.pem"
+                  spellCheck={false}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="tls_key">Key path</Label>
+                <Input
+                  id="tls_key"
+                  value={tlsKey}
+                  onChange={(e) => setTlsKey(e.target.value)}
+                  placeholder="/etc/hysteria/privkey.pem"
+                  spellCheck={false}
+                />
+              </div>
+            </CardContent>
+          </Card>
+
           {/* ---- Obfuscation ---- */}
           <Card>
             <CardHeader>
@@ -271,6 +331,93 @@ export default function Config() {
             </CardContent>
           </Card>
 
+          {/* ---- ACL ---- */}
+          <Card>
+            <CardHeader>
+              <CardTitle>ACL</CardTitle>
+              <p className="text-sm text-muted">
+                Inline access-control rules, one per line, evaluated top to bottom. Leave empty
+                for no ACL. An external rules file (
+                <code className="rounded bg-muted-bg px-1 py-0.5 text-xs">acl.file</code>) can be
+                set in the raw YAML below.
+              </p>
+            </CardHeader>
+            <CardContent>
+              <Textarea
+                value={aclText}
+                onChange={(e) => setAclText(e.target.value)}
+                spellCheck={false}
+                placeholder={"reject(10.0.0.0/8)\nreject(192.168.0.0/16)\ndirect(all)"}
+                className="min-h-[160px] font-mono text-xs leading-relaxed"
+              />
+            </CardContent>
+          </Card>
+
+          {/* ---- Resolver ---- */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Resolver</CardTitle>
+              <p className="text-sm text-muted">
+                DNS resolver the server uses for outbound connections. Off uses the system
+                resolver.
+              </p>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="resolver_type">Type</Label>
+                <select
+                  id="resolver_type"
+                  value={resolverType}
+                  onChange={(e) => setResolverType(e.target.value)}
+                  className="flex h-9 w-full rounded-[var(--radius)] border border-border bg-input px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:max-w-[240px]"
+                >
+                  <option value="">Off (system resolver)</option>
+                  <option value="dns">DNS (UDP with TCP fallback)</option>
+                  <option value="udp">UDP</option>
+                  <option value="tcp">TCP</option>
+                  <option value="tls">DNS over TLS</option>
+                  <option value="https">DNS over HTTPS</option>
+                </select>
+              </div>
+              {resolverType && (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="resolver_addr">Address</Label>
+                    <Input
+                      id="resolver_addr"
+                      value={resolverAddr}
+                      onChange={(e) => setResolverAddr(e.target.value)}
+                      placeholder={resolverType === "https" ? "1.1.1.1:443" : "1.1.1.1:53"}
+                      spellCheck={false}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="resolver_timeout">Timeout</Label>
+                    <Input
+                      id="resolver_timeout"
+                      value={resolverTimeout}
+                      onChange={(e) => setResolverTimeout(e.target.value)}
+                      placeholder="10s"
+                      spellCheck={false}
+                    />
+                  </div>
+                  {(resolverType === "tls" || resolverType === "https") && (
+                    <div className="flex flex-col gap-1.5">
+                      <Label htmlFor="resolver_sni">SNI</Label>
+                      <Input
+                        id="resolver_sni"
+                        value={resolverSni}
+                        onChange={(e) => setResolverSni(e.target.value)}
+                        placeholder="cloudflare-dns.com"
+                        spellCheck={false}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           {restartHint}
 
           <div className="flex gap-2">
@@ -294,8 +441,8 @@ export default function Config() {
                 <div className="mt-4 flex flex-col gap-3">
                   <p className="text-sm text-muted">
                     The full <code className="rounded bg-muted-bg px-1 py-0.5 text-xs">config.yaml</code>{" "}
-                    on disk, for fields the form above doesn't cover (TLS/cert via the Settings page,
-                    resolver, ACL, etc.). Unknown keys are preserved; the managed{" "}
+                    on disk, for fields the form above doesn't cover (ACL rules file, QUIC tuning,
+                    outbounds, etc.). Unknown keys are preserved; the managed{" "}
                     <code className="rounded bg-muted-bg px-1 py-0.5 text-xs">auth</code> and{" "}
                     <code className="rounded bg-muted-bg px-1 py-0.5 text-xs">trafficStats</code> blocks
                     are reasserted on save.

@@ -907,6 +907,15 @@ fn structured_to_proto(sc: &StructuredConfig) -> pb::HysteriaConfig {
             proxy_url: sc.masquerade_proxy_url.clone(),
             string_content: sc.masquerade_string_content.clone(),
         }),
+        acl: Some(pb::Acl {
+            inline: sc.acl_inline.clone(),
+        }),
+        resolver: Some(pb::Resolver {
+            r#type: sc.resolver_type.clone(),
+            addr: sc.resolver_addr.clone(),
+            timeout: sc.resolver_timeout.clone(),
+            sni: sc.resolver_sni.clone(),
+        }),
     }
 }
 
@@ -915,6 +924,8 @@ fn proto_to_structured(c: pb::HysteriaConfig) -> StructuredConfig {
     let obfs = c.obfs.unwrap_or_default();
     let bw = c.bandwidth.unwrap_or_default();
     let mq = c.masquerade.unwrap_or_default();
+    let acl = c.acl.unwrap_or_default();
+    let rv = c.resolver.unwrap_or_default();
     StructuredConfig {
         listen: c.listen,
         tls_cert: tls.cert,
@@ -926,5 +937,15 @@ fn proto_to_structured(c: pb::HysteriaConfig) -> StructuredConfig {
         masquerade_type: mq.r#type,
         masquerade_proxy_url: mq.proxy_url,
         masquerade_string_content: mq.string_content,
+        acl_inline: acl
+            .inline
+            .into_iter()
+            .map(|r| r.trim().to_string())
+            .filter(|r| !r.is_empty())
+            .collect(),
+        resolver_type: rv.r#type,
+        resolver_addr: rv.addr,
+        resolver_timeout: rv.timeout,
+        resolver_sni: rv.sni,
     }
 }

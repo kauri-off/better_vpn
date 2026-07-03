@@ -204,6 +204,8 @@ message HysteriaConfig {
   ObfsConfig obfs = 3;
   Bandwidth bandwidth = 4;
   Masquerade masquerade = 5;
+  Acl acl = 6;
+  Resolver resolver = 7;
   // auth.type and trafficStats are managed by the panel and not editable here.
 }
 message TlsConfig {
@@ -222,6 +224,16 @@ message Masquerade {
   string type = 1;     // "" | proxy | string | file
   string proxy_url = 2;
   string string_content = 3;
+}
+message Acl {
+  repeated string inline = 1;  // acl.inline rules in order; empty = no inline list.
+                               // acl.file is not modeled; preserved on round-trip.
+}
+message Resolver {
+  string type = 1;     // "" (none) | dns | udp | tcp | tls | https
+  string addr = 2;     // e.g. "1.1.1.1:443"
+  string timeout = 3;  // e.g. "10s"
+  string sni = 4;      // tls/https only
 }
 
 // ---- TLS certificate ----

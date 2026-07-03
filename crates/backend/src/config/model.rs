@@ -14,6 +14,11 @@ pub struct StructuredConfig {
     pub masquerade_type: String,
     pub masquerade_proxy_url: String,
     pub masquerade_string_content: String,
+    pub acl_inline: Vec<String>,
+    pub resolver_type: String,
+    pub resolver_addr: String,
+    pub resolver_timeout: String,
+    pub resolver_sni: String,
 }
 
 /// Parameters for the blocks the panel manages and reasserts on every save.

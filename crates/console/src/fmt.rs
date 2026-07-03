@@ -237,4 +237,14 @@ pub fn print_structured(s: &pb::HysteriaConfig) {
             println!("masquerade : {}", mq.r#type);
         }
     }
+    if let Some(acl) = &s.acl {
+        if !acl.inline.is_empty() {
+            println!("acl        : {} inline rule(s)", acl.inline.len());
+        }
+    }
+    if let Some(r) = &s.resolver {
+        if !r.r#type.is_empty() {
+            println!("resolver   : {} {}", r.r#type, r.addr);
+        }
+    }
 }

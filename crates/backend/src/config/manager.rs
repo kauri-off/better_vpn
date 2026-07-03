@@ -52,6 +52,17 @@ impl ConfigManager {
     pub fn structured_view(&self) -> Result<StructuredConfig> {
         let v = self.read_value()?;
         let m = v.as_mapping().cloned().unwrap_or_default();
+        let resolver_type = nested_str(&m, &["resolver", "type"]);
+        let (resolver_addr, resolver_timeout, resolver_sni) = if resolver_type.is_empty() {
+            (String::new(), String::new(), String::new())
+        } else {
+            let t = resolver_type.as_str();
+            (
+                nested_str(&m, &["resolver", t, "addr"]),
+                nested_str(&m, &["resolver", t, "timeout"]),
+                nested_str(&m, &["resolver", t, "sni"]),
+            )
+        };
         Ok(StructuredConfig {
             listen: get_str(&m, "listen"),
             tls_cert: nested_str(&m, &["tls", "cert"]),
@@ -63,6 +74,11 @@ impl ConfigManager {
             masquerade_type: nested_str(&m, &["masquerade", "type"]),
             masquerade_proxy_url: nested_str(&m, &["masquerade", "proxy", "url"]),
             masquerade_string_content: nested_str(&m, &["masquerade", "string", "content"]),
+            acl_inline: nested_str_list(&m, &["acl", "inline"]),
+            resolver_type,
+            resolver_addr,
+            resolver_timeout,
+            resolver_sni,
         })
     }
 
@@ -105,6 +121,36 @@ impl ConfigManager {
                     &["masquerade", "string", "content"],
                     &sc.masquerade_string_content,
                 );
+            }
+        }
+
+        // ACL: only `acl.inline` is managed; `acl.file` and other subkeys are
+        // preserved, and the `acl` mapping is dropped once nothing remains.
+        if sc.acl_inline.is_empty() {
+            remove_nested_and_prune(m, "acl", "inline");
+        } else {
+            set_nested_str_list(m, &["acl", "inline"], &sc.acl_inline);
+        }
+
+        if sc.resolver_type.is_empty() {
+            m.remove(Value::from("resolver"));
+        } else {
+            if sc.resolver_addr.is_empty() {
+                anyhow::bail!("resolver address is required when a resolver is enabled");
+            }
+            set_nested(m, &["resolver", "type"], &sc.resolver_type);
+            let t = sc.resolver_type.as_str();
+            set_nested(m, &["resolver", t, "addr"], &sc.resolver_addr);
+            set_nested(m, &["resolver", t, "timeout"], &sc.resolver_timeout);
+            if matches!(t, "tls" | "https") {
+                set_nested(m, &["resolver", t, "sni"], &sc.resolver_sni);
+            }
+            // Drop the blocks of previously selected types so a type change
+            // doesn't leave two competing configurations behind.
+            if let Some(Value::Mapping(r)) = m.get_mut(Value::from("resolver")) {
+                for other in RESOLVER_TYPES.iter().filter(|o| **o != t) {
+                    r.remove(Value::from(*other));
+                }
             }
         }
 
@@ -190,6 +236,10 @@ fn strip_bom(s: &str) -> &str {
     s.strip_prefix('\u{feff}').unwrap_or(s)
 }
 
+/// Resolver types Hysteria supports; the settings block lives under the key
+/// matching the type (e.g. `resolver.https.addr`).
+const RESOLVER_TYPES: [&str; 5] = ["dns", "udp", "tcp", "tls", "https"];
+
 // ---------------- YAML mapping helpers ----------------
 
 fn get_str(m: &Mapping, key: &str) -> String {
@@ -216,6 +266,61 @@ fn set_or_remove(m: &mut Mapping, key: &str, val: &str) {
         m.remove(Value::from(key));
     } else {
         m.insert(Value::from(key), Value::from(val));
+    }
+}
+
+/// Read a nested value as a list of scalar strings. Missing key or a
+/// non-sequence value yields an empty list; non-string items are skipped.
+fn nested_str_list(m: &Mapping, path: &[&str]) -> Vec<String> {
+    let (leaf, parents) = path.split_last().expect("non-empty path");
+    let mut cur = m;
+    for key in parents {
+        match cur.get(Value::from(*key)) {
+            Some(Value::Mapping(next)) => cur = next,
+            _ => return Vec::new(),
+        }
+    }
+    match cur.get(Value::from(*leaf)) {
+        Some(Value::Sequence(items)) => items
+            .iter()
+            .filter_map(|v| v.as_str().map(str::to_string))
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+/// Set a nested sequence-of-strings value, creating intermediate mappings.
+/// An empty slice removes the leaf.
+fn set_nested_str_list(m: &mut Mapping, path: &[&str], vals: &[String]) {
+    let (leaf, parents) = path.split_last().expect("non-empty path");
+    let mut cur = m;
+    for key in parents {
+        let entry = cur
+            .entry(Value::from(*key))
+            .or_insert_with(|| Value::Mapping(Mapping::new()));
+        if !entry.is_mapping() {
+            *entry = Value::Mapping(Mapping::new());
+        }
+        cur = entry.as_mapping_mut().unwrap();
+    }
+    let leaf_key = Value::from(*leaf);
+    if vals.is_empty() {
+        cur.remove(&leaf_key);
+    } else {
+        let seq = vals.iter().map(|v| Value::from(v.as_str())).collect();
+        cur.insert(leaf_key, Value::Sequence(seq));
+    }
+}
+
+/// Remove `child` from the mapping at `parent`, dropping `parent` itself if it
+/// ends up empty.
+fn remove_nested_and_prune(m: &mut Mapping, parent: &str, child: &str) {
+    let parent_key = Value::from(parent);
+    if let Some(Value::Mapping(inner)) = m.get_mut(&parent_key) {
+        inner.remove(Value::from(child));
+        if inner.is_empty() {
+            m.remove(&parent_key);
+        }
     }
 }
 
@@ -259,7 +364,7 @@ mod tests {
         let path = dir.join("config.yaml");
         std::fs::write(
             &path,
-            "listen: \":443\"\nmyCustomKey:\n  keep: yes\nresolver:\n  type: udp\n",
+            "listen: \":443\"\nmyCustomKey:\n  keep: yes\nignoreClientBandwidth: true\n",
         )
         .unwrap();
 
@@ -310,6 +415,125 @@ mod tests {
         let raw = mgr.read_raw().unwrap();
         assert!(raw.contains("fullchain.pem"), "tls cert must be set");
         assert!(!raw.contains("acme"), "acme block must be dropped:\n{raw}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn test_managed() -> ManagedBlocks {
+        ManagedBlocks {
+            auth_url: "http://127.0.0.1:8080/auth".into(),
+            stats_listen: "127.0.0.1:9999".into(),
+            stats_secret: "s3cret".into(),
+        }
+    }
+
+    fn test_mgr(name: &str, yaml: &str) -> (ConfigManager, std::path::PathBuf) {
+        let dir = std::env::temp_dir().join(format!("cfgtest-{name}-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.yaml");
+        std::fs::write(&path, yaml).unwrap();
+        (ConfigManager::new(&path), dir)
+    }
+
+    #[test]
+    fn acl_inline_round_trip() {
+        let (mgr, dir) = test_mgr(
+            "acl",
+            "listen: \":443\"\nacl:\n  file: /etc/rules.txt\n  inline:\n    - reject(10.0.0.0/8)\n",
+        );
+
+        let mut sc = mgr.structured_view().unwrap();
+        assert_eq!(sc.acl_inline, vec!["reject(10.0.0.0/8)".to_string()]);
+
+        sc.acl_inline.push("direct(all)".into());
+        mgr.apply_structured(&sc, &test_managed()).unwrap();
+
+        let sc2 = mgr.structured_view().unwrap();
+        assert_eq!(
+            sc2.acl_inline,
+            vec!["reject(10.0.0.0/8)".to_string(), "direct(all)".to_string()]
+        );
+        let raw = mgr.read_raw().unwrap();
+        assert!(raw.contains("/etc/rules.txt"), "acl.file must survive:\n{raw}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn acl_cleared_keeps_file_and_prunes_empty_acl() {
+        // With a sibling `file` key, clearing inline keeps `acl`.
+        let (mgr, dir) = test_mgr(
+            "acl-clear",
+            "acl:\n  file: /etc/rules.txt\n  inline:\n    - direct(all)\n",
+        );
+        let mut sc = mgr.structured_view().unwrap();
+        sc.acl_inline.clear();
+        mgr.apply_structured(&sc, &test_managed()).unwrap();
+        let raw = mgr.read_raw().unwrap();
+        assert!(raw.contains("/etc/rules.txt"));
+        assert!(!raw.contains("inline"));
+        let _ = std::fs::remove_dir_all(&dir);
+
+        // With inline only, clearing it prunes the whole `acl` mapping.
+        let (mgr, dir) = test_mgr("acl-prune", "acl:\n  inline:\n    - direct(all)\n");
+        let mut sc = mgr.structured_view().unwrap();
+        sc.acl_inline.clear();
+        mgr.apply_structured(&sc, &test_managed()).unwrap();
+        let raw = mgr.read_raw().unwrap();
+        assert!(!raw.contains("acl"), "empty acl mapping must be pruned:\n{raw}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn resolver_extract_apply_switch_off() {
+        let (mgr, dir) = test_mgr(
+            "resolver",
+            "resolver:\n  type: https\n  https:\n    addr: 1.1.1.1:443\n    sni: cloudflare-dns.com\n    timeout: 10s\n",
+        );
+
+        let mut sc = mgr.structured_view().unwrap();
+        assert_eq!(sc.resolver_type, "https");
+        assert_eq!(sc.resolver_addr, "1.1.1.1:443");
+        assert_eq!(sc.resolver_sni, "cloudflare-dns.com");
+        assert_eq!(sc.resolver_timeout, "10s");
+
+        // Switching the type must drop the old type's block.
+        sc.resolver_type = "udp".into();
+        sc.resolver_addr = "8.8.8.8:53".into();
+        mgr.apply_structured(&sc, &test_managed()).unwrap();
+        let raw = mgr.read_raw().unwrap();
+        assert!(raw.contains("udp"));
+        assert!(raw.contains("8.8.8.8:53"));
+        assert!(!raw.contains("https:"), "stale https block must go:\n{raw}");
+
+        // Blank type removes the resolver entirely.
+        let mut sc = mgr.structured_view().unwrap();
+        sc.resolver_type = String::new();
+        mgr.apply_structured(&sc, &test_managed()).unwrap();
+        let raw = mgr.read_raw().unwrap();
+        assert!(!raw.contains("resolver"), "resolver must be removed:\n{raw}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn resolver_requires_addr() {
+        let (mgr, dir) = test_mgr("resolver-addr", "listen: \":443\"\n");
+        let mut sc = mgr.structured_view().unwrap();
+        sc.resolver_type = "https".into();
+        assert!(mgr.apply_structured(&sc, &test_managed()).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn resolver_unknown_subkey_preserved() {
+        let (mgr, dir) = test_mgr(
+            "resolver-extra",
+            "resolver:\n  type: https\n  https:\n    addr: 1.1.1.1:443\n    insecure: true\n",
+        );
+        let mut sc = mgr.structured_view().unwrap();
+        sc.resolver_timeout = "5s".into();
+        mgr.apply_structured(&sc, &test_managed()).unwrap();
+        let raw = mgr.read_raw().unwrap();
+        assert!(raw.contains("insecure"), "unmanaged subkey must survive:\n{raw}");
+        assert!(raw.contains("5s"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
