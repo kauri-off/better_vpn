@@ -8,16 +8,10 @@
 
 use anyhow::{Context, Result};
 use base64::Engine as _;
-use rcgen::{CertificateParams, DistinguishedName, DnType, KeyPair, SanType, PKCS_ED25519};
+use rcgen::{CertificateParams, DistinguishedName, KeyPair, SanType, PKCS_ED25519};
 use sha2::{Digest, Sha256};
 use std::net::IpAddr;
 use std::path::Path;
-
-/// Default certificate Common Name when the operator doesn't supply one. Kept
-/// deliberately generic (an ordinary self-signed server cert uses exactly this)
-/// so an active prober inspecting the cert learns nothing about the service —
-/// the CN is cosmetic anyway, since clients trust the cert by `pinSHA256`.
-pub const DEFAULT_CERT_CN: &str = "localhost";
 
 /// Inspected state of a certificate file for the panel UI.
 #[derive(Debug, Default, Clone)]
@@ -33,20 +27,18 @@ pub struct CertSummary {
     pub parse_error: String,
 }
 
-/// Mint an Ed25519 self-signed certificate. Each SAN is classified as an IP
-/// address when it parses as one, otherwise a DNS name — mirroring the
-/// `IP:…,DNS:…` split a hand-rolled `openssl` SAN list would use. Returns the
-/// PEM-encoded `(certificate, private_key)`.
-pub fn generate_self_signed(
-    common_name: &str,
-    sans: &[String],
-    validity_days: u32,
-) -> Result<(String, String)> {
+/// Mint an Ed25519 self-signed certificate. The subject is left empty (no
+/// Common Name): clients trust the cert by `pinSHA256`, not by name, so a CN is
+/// cosmetic and an empty subject leaks nothing to a prober inspecting the cert.
+/// Each SAN is classified as an IP address when it parses as one, otherwise a
+/// DNS name — mirroring the `IP:…,DNS:…` split a hand-rolled `openssl` SAN list
+/// would use. Returns the PEM-encoded `(certificate, private_key)`.
+pub fn generate_self_signed(sans: &[String], validity_days: u32) -> Result<(String, String)> {
     let mut params = CertificateParams::default();
 
-    let mut dn = DistinguishedName::new();
-    dn.push(DnType::CommonName, common_name);
-    params.distinguished_name = dn;
+    // rcgen's default params carry a placeholder Common Name; clear the subject
+    // outright so the generated cert has no CN (it's cosmetic under pinning).
+    params.distinguished_name = DistinguishedName::new();
 
     params.subject_alt_names = sans
         .iter()
@@ -71,15 +63,15 @@ pub fn generate_self_signed(
 
 /// Ensure a usable TLS cert/key pair exists at `cert_path`/`key_path`, minting
 /// a default self-signed one if either file is missing. The defaults mirror the
-/// panel's `generate_cert` (CN `vpn`, no SAN so any client SNI is accepted, ~10y
-/// validity) so the core can start on first boot, before an operator has visited
+/// panel's `generate_cert` (empty subject, no SAN so any client SNI is accepted,
+/// ~10y validity) so the core can start on first boot, before an operator has visited
 /// the panel. Returns `true` when a cert was generated, `false` when both files
 /// already existed. Regenerating from the panel later replaces this in place.
 pub fn ensure_default_cert(cert_path: &str, key_path: &str) -> Result<bool> {
     if Path::new(cert_path).exists() && Path::new(key_path).exists() {
         return Ok(false);
     }
-    let (cert_pem, key_pem) = generate_self_signed(DEFAULT_CERT_CN, &[], 3650)?;
+    let (cert_pem, key_pem) = generate_self_signed(&[], 3650)?;
     write_pems(cert_path, key_path, &cert_pem, &key_pem)?;
     Ok(true)
 }
@@ -269,7 +261,7 @@ mod tests {
     #[test]
     fn generate_round_trips_through_inspect() {
         let sans = vec!["10.0.0.5".to_string(), "vpn.local".to_string()];
-        let (cert_pem, key_pem) = generate_self_signed("vpn", &sans, 3650).unwrap();
+        let (cert_pem, key_pem) = generate_self_signed(&sans, 3650).unwrap();
         assert!(cert_pem.contains("BEGIN CERTIFICATE"));
         assert!(key_pem.contains("PRIVATE KEY"));
 
@@ -292,7 +284,8 @@ mod tests {
             "parse error: {}",
             info.parse_error
         );
-        assert_eq!(info.subject_cn, "vpn");
+        // No Common Name is set on generated certs.
+        assert!(info.subject_cn.is_empty());
         // SANs round-trip (IP classified as IP, name as DNS).
         assert!(info.sans.contains(&"10.0.0.5".to_string()));
         assert!(info.sans.contains(&"vpn.local".to_string()));
@@ -309,7 +302,7 @@ mod tests {
     }
 
     #[test]
-    fn ensure_default_cert_mints_once_with_generic_cn() {
+    fn ensure_default_cert_mints_once_with_empty_subject() {
         let dir = std::env::temp_dir().join(format!("bvpn-ensure-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let cert_path = dir.join("fullchain.pem");
@@ -317,11 +310,11 @@ mod tests {
         let c = cert_path.to_str().unwrap();
         let k = key_path.to_str().unwrap();
 
-        // First call mints the pair using the generic default CN and no SAN.
+        // First call mints the pair with an empty subject and no SAN.
         assert!(ensure_default_cert(c, k).unwrap());
         let info = inspect(c);
         assert!(info.exists && info.parse_error.is_empty());
-        assert_eq!(info.subject_cn, DEFAULT_CERT_CN);
+        assert!(info.subject_cn.is_empty());
         assert!(info.sans.is_empty());
         assert!(!info.expired);
 

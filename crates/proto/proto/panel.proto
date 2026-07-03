@@ -240,7 +240,7 @@ message CertInfo {
   string parse_error = 10;        // non-empty if the file exists but failed to parse
 }
 message GenerateCertRequest {
-  string common_name = 1;         // subject CN; "" => first SAN, else "vpn"
+  reserved 1;                     // was common_name; generated certs carry no CN
   // Explicit SANs (optional). Empty by default: the cert carries NO SAN, which
   // is deliberate. Clients trust it by `pinSHA256`, not hostname, and an empty
   // SAN set frees the SNI — Hysteria's default `tls.sniGuard: dns-san` only

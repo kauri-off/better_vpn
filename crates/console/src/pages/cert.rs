@@ -28,9 +28,6 @@ fn view(ctx: &mut Ctx) {
 }
 
 fn generate(ctx: &mut Ctx) {
-    let Ok(common_name) = ui::input("common name (blank = default)") else {
-        return;
-    };
     let Ok(sans_s) = ui::input("SANs, comma-separated (blank = none)") else {
         return;
     };
@@ -62,7 +59,6 @@ fn generate(ctx: &mut Ctx) {
     }
 
     let msg = pb::GenerateCertRequest {
-        common_name,
         sans,
         validity_days,
         cert_path,

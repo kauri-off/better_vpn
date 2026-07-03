@@ -706,18 +706,6 @@ impl PanelService for PanelSvc {
                 sans.push(c.to_string());
             }
         }
-        // Subject CN: explicit override, else the first explicit SAN, else a
-        // generic label. CN is cosmetic under pinning — never derived from SNI.
-        let common_name = {
-            let cn = req.common_name.trim();
-            if !cn.is_empty() {
-                cn.to_string()
-            } else {
-                sans.first()
-                    .cloned()
-                    .unwrap_or_else(|| cert::DEFAULT_CERT_CN.to_string())
-            }
-        };
         let validity_days = if req.validity_days <= 0 {
             3650
         } else {
@@ -742,7 +730,7 @@ impl PanelService for PanelSvc {
         validate_cert_dest(&req.cert_path).map_err(Status::invalid_argument)?;
         validate_cert_dest(&req.key_path).map_err(Status::invalid_argument)?;
 
-        let (cert_pem, key_pem) = cert::generate_self_signed(&common_name, &sans, validity_days)
+        let (cert_pem, key_pem) = cert::generate_self_signed(&sans, validity_days)
             .map_err(|e| Status::invalid_argument(format!("generating certificate: {e}")))?;
         cert::write_pems(&cert_path, &key_path, &cert_pem, &key_pem)
             .map_err(|e| Status::internal(format!("writing certificate: {e}")))?;

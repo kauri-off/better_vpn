@@ -22,7 +22,6 @@ export default function Settings() {
 
   const [port, setPort] = useState("");
   const [sni, setSni] = useState("");
-  const [commonName, setCommonName] = useState("");
   const [validityDays, setValidityDays] = useState("3650");
   const [newToken, setNewToken] = useState("");
   const [issuedToken, setIssuedToken] = useState("");
@@ -42,10 +41,6 @@ export default function Settings() {
     }
   }, [settingsQuery.data]);
 
-  useEffect(() => {
-    const c = certQuery.data;
-    if (c) setCommonName(c.exists && !c.parseError ? c.subjectCn : "");
-  }, [certQuery.data]);
 
   // Load failures surface as a toast (stable id so refetch retries don't stack).
   useEffect(() => {
@@ -110,7 +105,6 @@ export default function Settings() {
     // set frees the SNI (Hysteria's sniGuard only validates when a DNS SAN
     // exists). So the panel never offers a SAN field.
     await generateCertMutation.mutateAsync({
-      commonName: commonName.trim(),
       sans: [],
       validityDays: Math.floor(days),
     });
@@ -255,16 +249,6 @@ export default function Settings() {
               </div>
 
               {/* Generate form */}
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="cert_cn">Common name (optional)</Label>
-                <Input
-                  id="cert_cn"
-                  value={commonName}
-                  onChange={(e) => setCommonName(e.target.value)}
-                  placeholder="defaults to localhost"
-                  spellCheck={false}
-                />
-              </div>
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="cert_days">Validity (days)</Label>
                 <Input
