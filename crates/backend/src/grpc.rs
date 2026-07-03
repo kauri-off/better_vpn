@@ -10,7 +10,7 @@ use crate::state::AppState;
 use chrono::{DateTime, TimeZone, Utc};
 use percent_encoding::{utf8_percent_encode, AsciiSet, NON_ALPHANUMERIC};
 use qrcode::render::svg;
-use qrcode::QrCode;
+use qrcode::{EcLevel, QrCode};
 use std::path::Path;
 use tonic::{Request, Response, Status};
 use vpn_common::settings_keys as k;
@@ -261,8 +261,17 @@ impl PanelSvc {
     }
 
     /// Render `uri` as a standalone QR-code SVG for the client apps to scan.
+    ///
+    /// The payload (token + colon-delimited pinSHA256 + obfs password + sni)
+    /// easily runs 200+ bytes, which at the default `EcLevel::M` pushes the
+    /// code to a high version (60-80+ modules/side) that's too dense to
+    /// resolve at the small size the panel displays it. `EcLevel::L` trades
+    /// error-correction redundancy for a lower version at the same payload
+    /// size, which is the more valuable trade here since the code is
+    /// rendered fresh (not printed/worn), so damage tolerance matters less
+    /// than module size.
     fn qr_svg(uri: &str) -> String {
-        match QrCode::new(uri.as_bytes()) {
+        match QrCode::with_error_correction_level(uri.as_bytes(), EcLevel::L) {
             Ok(code) => code
                 .render::<svg::Color>()
                 .min_dimensions(220, 220)

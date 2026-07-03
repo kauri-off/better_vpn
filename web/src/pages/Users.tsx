@@ -929,7 +929,7 @@ function ConnectionDialog({
         </DialogHeader>
         {created?.qr && (
           <div
-            className="mx-auto size-48 [&>svg]:size-full rounded-[var(--radius)] border border-border bg-white p-2"
+            className="mx-auto size-72 [&>svg]:size-full rounded-[var(--radius)] border border-border bg-white p-2"
             // The SVG is generated server-side from the connection URI.
             dangerouslySetInnerHTML={{ __html: created.qr }}
           />
