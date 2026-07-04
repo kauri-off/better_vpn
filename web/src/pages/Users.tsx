@@ -175,12 +175,14 @@ export default function Users() {
     };
     const rows = users.filter(pred[filter]);
     const dir = sort.dir === "asc" ? 1 : -1;
-    const key = (u: VpnUser): number | string => {
+    // null = "no value" (e.g. unlimited quota); these always sink to the
+    // bottom regardless of sort direction rather than flipping to the top.
+    const key = (u: VpnUser): number | string | null => {
       switch (sort.key) {
         case "username":
           return u.username.toLowerCase();
         case "usage":
-          return usagePct(u) ?? -1;
+          return usagePct(u);
         case "expires":
           return u.expiresAt <= 0n ? Number.MAX_SAFE_INTEGER : Number(u.expiresAt);
         case "lastSeen":
@@ -190,6 +192,10 @@ export default function Users() {
     return [...rows].sort((a, b) => {
       const ka = key(a),
         kb = key(b);
+      if (ka === null || kb === null) {
+        if (ka === kb) return 0;
+        return ka === null ? 1 : -1;
+      }
       if (ka < kb) return -1 * dir;
       if (ka > kb) return 1 * dir;
       return 0;
