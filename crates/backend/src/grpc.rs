@@ -522,16 +522,32 @@ impl PanelService for PanelSvc {
     ) -> Result<Response<pb::VpnUser>, Status> {
         check_auth(&self.state, &request)?;
         let req = request.into_inner();
+        // An empty/whitespace token would lock the user out (it's their
+        // credential), so reject it rather than silently ignoring.
+        let token = match req.token {
+            Some(t) if t.trim().is_empty() => {
+                return Err(Status::invalid_argument("token must not be empty"));
+            }
+            Some(t) => Some(t.trim().to_owned()),
+            None => None,
+        };
         let changes = VpnUserChanges {
             enabled: req.enabled,
             expires_at: req.expires_at.map(from_ts),
             quota_bytes: req.quota_bytes,
             used_bytes: None,
             note: req.note,
+            token,
         };
         let mut conn = self.state.pool.get().map_err(db_err)?;
-        let u = queries::update_user(&mut conn, req.id, changes)
-            .map_err(|_| Status::not_found("user not found"))?;
+        let u = queries::update_user(&mut conn, req.id, changes).map_err(|e| match e {
+            // The token column is UNIQUE; a clash means another user already has it.
+            vpn_db::DbError::Query(diesel::result::Error::DatabaseError(
+                diesel::result::DatabaseErrorKind::UniqueViolation,
+                _,
+            )) => Status::already_exists("that token is already in use by another user"),
+            _ => Status::not_found("user not found"),
+        })?;
         Ok(Response::new(to_proto_user(u, &self.state)))
     }
 

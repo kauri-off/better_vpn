@@ -154,6 +154,9 @@ message UpdateUserRequest {
   optional int64 expires_at = 3;
   optional int64 quota_bytes = 4;
   optional string note = 5;
+  // New plaintext auth token. Omitted => unchanged. Must be non-empty and
+  // unique across users (it is the client's credential and auth lookup key).
+  optional string token = 6;
 }
 
 // ---- Stats ----

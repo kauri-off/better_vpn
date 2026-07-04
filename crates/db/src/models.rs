@@ -48,6 +48,7 @@ pub struct VpnUserChanges {
     pub quota_bytes: Option<i64>,
     pub used_bytes: Option<i64>,
     pub note: Option<String>,
+    pub token: Option<String>,
 }
 
 #[derive(Debug, Clone, Queryable, Selectable, Insertable)]

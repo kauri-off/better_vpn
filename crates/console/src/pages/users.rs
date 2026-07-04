@@ -81,7 +81,7 @@ fn detail(ctx: &mut Ctx, id: i32) {
         let toggle = if u.enabled { "Disable" } else { "Enable" };
         let items = [
             toggle,
-            "Edit (expires / quota / note)",
+            "Edit (expires / quota / note / token)",
             "Show share URI + QR",
             "Reset usage",
             "Kick",
@@ -111,6 +111,7 @@ fn set_enabled(ctx: &mut Ctx, id: i32, enabled: bool) {
         expires_at: None,
         quota_bytes: None,
         note: None,
+        token: None,
     };
     let Some(req) = ui::report(authed(msg)) else {
         return;
@@ -149,7 +150,16 @@ fn edit(ctx: &mut Ctx, id: i32) {
         Some(note_s)
     };
 
-    if expires_at.is_none() && quota_bytes.is_none() && note.is_none() {
+    let Ok(token_s) = ui::input("auth token (blank = unchanged)") else {
+        return;
+    };
+    let token = if token_s.trim().is_empty() {
+        None
+    } else {
+        Some(token_s.trim().to_owned())
+    };
+
+    if expires_at.is_none() && quota_bytes.is_none() && note.is_none() && token.is_none() {
         println!("nothing to change.");
         return;
     }
@@ -160,6 +170,7 @@ fn edit(ctx: &mut Ctx, id: i32) {
         expires_at,
         quota_bytes,
         note,
+        token,
     };
     let Some(req) = ui::report(authed(msg)) else {
         return;

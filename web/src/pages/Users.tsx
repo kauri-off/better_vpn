@@ -801,16 +801,41 @@ function EditUserDialog({
   const [quotaGb, setQuotaGb] = useState("0");
   const [expiresDate, setExpiresDate] = useState("");
   const [note, setNote] = useState("");
+  const [token, setToken] = useState("");
+  const [tokenLoading, setTokenLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const updateUserMutation = useMutation(updateUser);
+  const userConfigMutation = useMutation(getUserConfig);
 
-  // Re-seed the form whenever a different user opens the dialog.
+  // Re-seed the form whenever a different user opens the dialog. The token
+  // isn't part of the VpnUser row, so fetch it separately to prefill the field.
   useEffect(() => {
     if (!user) return;
     setEnabled(user.enabled);
     setQuotaGb(user.quotaBytes > 0n ? (Number(user.quotaBytes) / 1024 ** 3).toString() : "0");
     setExpiresDate(toDateInput(user.expiresAt));
     setNote(user.note);
+    setToken("");
+
+    let cancelled = false;
+    setTokenLoading(true);
+    userConfigMutation
+      .mutateAsync({ id: user.id, linkHost: window.location.hostname })
+      .then((resp) => {
+        // Ignore a stale response if the dialog moved to another user.
+        if (!cancelled) setToken(resp.authToken);
+      })
+      .catch(() => {
+        // Couldn't fetch the token (RPC/network error); leave the field blank
+        // so a blank submit is treated as "unchanged" rather than clobbering it.
+      })
+      .finally(() => {
+        if (!cancelled) setTokenLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   async function save() {
@@ -821,12 +846,17 @@ function EditUserDialog({
       if (!Number.isFinite(quotaGbNum) || quotaGbNum < 0) {
         throw new Error("Quota (GB) must be a non-negative number.");
       }
+      // Blank => leave the token unchanged; only send it when it differs from
+      // the current token (so we don't needlessly rewrite it).
+      const trimmedToken = token.trim();
+      const tokenChanged = trimmedToken.length > 0;
       await updateUserMutation.mutateAsync({
         id: user.id,
         enabled,
         quotaBytes: BigInt(Math.round(quotaGbNum * 1024 ** 3)),
         expiresAt: fromDateInput(expiresDate),
         note: note.trim(),
+        token: tokenChanged ? trimmedToken : undefined,
       });
       toast.success("User updated");
       onSaved();
@@ -842,7 +872,7 @@ function EditUserDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Edit {user?.username}</DialogTitle>
-          <DialogDescription>Update quota, expiry, note, and enabled state.</DialogDescription>
+          <DialogDescription>Update quota, expiry, note, auth token, and enabled state.</DialogDescription>
         </DialogHeader>
 
         {user && (
@@ -878,6 +908,22 @@ function EditUserDialog({
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="eu-note">Note</Label>
               <Textarea id="eu-note" rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="eu-token">Auth token</Label>
+              <Input
+                id="eu-token"
+                className="font-mono"
+                value={token}
+                onChange={(e) => setToken(e.target.value)}
+                placeholder={tokenLoading ? "Loading…" : "No stored token"}
+                spellCheck={false}
+                autoComplete="off"
+              />
+              <p className="text-xs text-muted">
+                The client's credential. Changing it disconnects existing devices until they reconnect
+                with the new token.
+              </p>
             </div>
 
             <DialogFooter className="sm:justify-between">
