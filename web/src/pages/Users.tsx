@@ -193,7 +193,8 @@ export default function Users() {
       const ka = key(a),
         kb = key(b);
       if (ka === null || kb === null) {
-        if (ka === kb) return 0;
+        // Both unlimited: fall back to raw usage so the column still sorts.
+        if (ka === kb) return (Number(a.usedBytes) - Number(b.usedBytes)) * dir;
         return ka === null ? 1 : -1;
       }
       if (ka < kb) return -1 * dir;
