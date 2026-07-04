@@ -809,40 +809,17 @@ function EditUserDialog({
   const [expiresDate, setExpiresDate] = useState("");
   const [note, setNote] = useState("");
   const [token, setToken] = useState("");
-  const [tokenLoading, setTokenLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const updateUserMutation = useMutation(updateUser);
-  const userConfigMutation = useMutation(getUserConfig);
 
-  // Re-seed the form whenever a different user opens the dialog. The token
-  // isn't part of the VpnUser row, so fetch it separately to prefill the field.
+  // Re-seed the form whenever a different user opens the dialog.
   useEffect(() => {
     if (!user) return;
     setEnabled(user.enabled);
     setQuotaGb(user.quotaBytes > 0n ? (Number(user.quotaBytes) / 1024 ** 3).toString() : "0");
     setExpiresDate(toDateInput(user.expiresAt));
     setNote(user.note);
-    setToken("");
-
-    let cancelled = false;
-    setTokenLoading(true);
-    userConfigMutation
-      .mutateAsync({ id: user.id, linkHost: window.location.hostname })
-      .then((resp) => {
-        // Ignore a stale response if the dialog moved to another user.
-        if (!cancelled) setToken(resp.authToken);
-      })
-      .catch(() => {
-        // Couldn't fetch the token (RPC/network error); leave the field blank
-        // so a blank submit is treated as "unchanged" rather than clobbering it.
-      })
-      .finally(() => {
-        if (!cancelled) setTokenLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setToken(user.token);
   }, [user]);
 
   async function save() {
@@ -853,10 +830,10 @@ function EditUserDialog({
       if (!Number.isFinite(quotaGbNum) || quotaGbNum < 0) {
         throw new Error("Quota (GB) must be a non-negative number.");
       }
-      // Blank => leave the token unchanged; only send it when it differs from
-      // the current token (so we don't needlessly rewrite it).
+      // Blank => leave the token unchanged; only send it when it actually
+      // differs from the stored one (so we don't needlessly rewrite it).
       const trimmedToken = token.trim();
-      const tokenChanged = trimmedToken.length > 0;
+      const tokenChanged = trimmedToken.length > 0 && trimmedToken !== user.token;
       await updateUserMutation.mutateAsync({
         id: user.id,
         enabled,
@@ -923,7 +900,7 @@ function EditUserDialog({
                 className="font-mono"
                 value={token}
                 onChange={(e) => setToken(e.target.value)}
-                placeholder={tokenLoading ? "Loading…" : "No stored token"}
+                placeholder="Blank = keep current token"
                 spellCheck={false}
                 autoComplete="off"
               />

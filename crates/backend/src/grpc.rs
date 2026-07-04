@@ -92,6 +92,7 @@ fn to_proto_user(u: vpn_db::models::VpnUser, state: &AppState) -> pb::VpnUser {
         last_seen: opt_ts(u.last_seen),
         created_at: ts(u.created_at),
         note: u.note,
+        token: u.token,
     }
 }
 

@@ -100,6 +100,10 @@ message VpnUser {
   int64 last_seen = 8;       // unix seconds, 0 = never
   int64 created_at = 9;
   string note = 10;
+  // Plaintext auth token (the client's credential). The panel is an admin-only
+  // surface, so returning it in listings is deliberate — it prefills the edit
+  // form without an extra GetUserConfig round-trip.
+  string token = 11;
 }
 
 message ListUsersRequest {
@@ -141,11 +145,11 @@ message CreateUserResponse {
 // Stored connection details for an existing user's share/QR screen.
 message UserConfigResponse {
   string username = 1;
-  // Plaintext auth token, or empty if it was not stored (legacy user).
+  // Plaintext auth token.
   string auth_token = 2;
-  // hysteria2:// connection URI, empty when the token is unavailable.
+  // hysteria2:// connection URI.
   string connection_uri = 3;
-  // QR code of the connection URI as a standalone SVG, empty when unavailable.
+  // QR code of the connection URI as a standalone SVG.
   string qr_svg = 4;
 }
 message UpdateUserRequest {

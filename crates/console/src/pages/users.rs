@@ -249,10 +249,7 @@ fn share(ctx: &mut Ctx, id: i32) {
         return;
     };
     if cfg.connection_uri.is_empty() {
-        println!(
-            "no stored token for '{}' (legacy user); nothing to share.",
-            cfg.username
-        );
+        println!("no stored token for '{}'; nothing to share.", cfg.username);
         ui::pause();
         return;
     }
