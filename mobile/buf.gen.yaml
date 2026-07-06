@@ -1,0 +1,17 @@
+version: v2
+plugins:
+  # Connect-ES v2: protoc-gen-es emits both message types and the service
+  # descriptor used by createClient(). No separate connect plugin needed.
+  # import_extension=none (unlike web's =js): Metro resolves extensionless
+  # relative imports, but not the ESM ".js"-points-at-".ts" convention.
+  - local: protoc-gen-es
+    out: src/gen
+    opt:
+      - target=ts
+      - import_extension=none
+  # Connect-Query: per-RPC query descriptors consumed by useQuery/useMutation.
+  - local: protoc-gen-connect-query
+    out: src/gen
+    opt:
+      - target=ts
+      - import_extension=none

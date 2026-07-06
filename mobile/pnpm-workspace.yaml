@@ -1,0 +1,9 @@
+allowBuilds:
+  /: true
+  '@': true
+  b: true
+  d: true
+  f: true
+  i: true
+  l: true
+  u: true
