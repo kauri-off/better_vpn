@@ -5,6 +5,7 @@ import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
 import { useColorScheme } from "react-native";
+import { KeyboardProvider } from "react-native-keyboard-controller";
 import { PaperProvider } from "react-native-paper";
 import { en, registerTranslation } from "react-native-paper-dates";
 
@@ -15,6 +16,9 @@ import { navDark, navLight, paperDark, paperLight } from "@/lib/theme";
 registerTranslation("en", en);
 
 SplashScreen.preventAutoHideAsync();
+// Fade the splash out instead of a hard cut (iOS-only; Android's system
+// splash animates its own exit).
+SplashScreen.setOptions({ fade: true, duration: 400 });
 
 function RootNavigator() {
   const { ready, active, activeToken } = useServers();
@@ -49,15 +53,17 @@ export default function RootLayout() {
   const scheme = useColorScheme();
   const dark = scheme === "dark";
   return (
-    <ServersProvider>
-      <PanelConnectProvider>
-        <PaperProvider theme={dark ? paperDark : paperLight}>
-          <ThemeProvider value={dark ? navDark : navLight}>
-            <StatusBar style="auto" />
-            <RootNavigator />
-          </ThemeProvider>
-        </PaperProvider>
-      </PanelConnectProvider>
-    </ServersProvider>
+    <KeyboardProvider>
+      <ServersProvider>
+        <PanelConnectProvider>
+          <PaperProvider theme={dark ? paperDark : paperLight}>
+            <ThemeProvider value={dark ? navDark : navLight}>
+              <StatusBar style="auto" />
+              <RootNavigator />
+            </ThemeProvider>
+          </PaperProvider>
+        </PanelConnectProvider>
+      </ServersProvider>
+    </KeyboardProvider>
   );
 }

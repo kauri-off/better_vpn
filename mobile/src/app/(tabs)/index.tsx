@@ -1,10 +1,9 @@
 import { useMutation, useQuery } from "@connectrpc/connect-query";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 import {
-  ActivityIndicator,
   Appbar,
   Button,
   Card,
@@ -16,10 +15,12 @@ import {
   Text,
   useTheme,
 } from "react-native-paper";
+import Animated, { FadeInDown } from "react-native-reanimated";
 
 import { POLL_MS } from "@/api/client";
 import { useServers } from "@/api/servers";
 import { Screen } from "@/components/screen";
+import { Skeleton } from "@/components/skeleton";
 import { Sparkline } from "@/components/sparkline";
 import { StatGrid, StatTile } from "@/components/stat-tile";
 import {
@@ -28,15 +29,14 @@ import {
   updateCore,
 } from "@/gen/panel-PanelService_connectquery";
 import { fmtBytes, fmtDuration, fmtRate } from "@/lib/format";
-import { useAppActive } from "@/lib/use-app-active";
 
 const HISTORY = 24; // sparkline window: 24 samples ≈ 72s at the 3s poll
 
 export default function DashboardScreen() {
   const theme = useTheme();
   const { active } = useServers();
-  const appActive = useAppActive();
-  const stats = useQuery(getServerStats, {}, { refetchInterval: appActive ? POLL_MS : false });
+  // Polling pauses in the background via the focusManager wiring in api/client.
+  const stats = useQuery(getServerStats, {}, { refetchInterval: POLL_MS });
 
   // Pull-to-refresh spinner is driven by the gesture only — binding it to
   // isRefetching would flash it on every background poll tick.
@@ -50,16 +50,24 @@ export default function DashboardScreen() {
     }
   };
 
-  // Rolling rate history for the traffic sparklines.
-  const historyRef = useRef<{ rx: number[]; tx: number[] }>({ rx: [], tx: [] });
-  const [, bump] = useState(0);
-  useEffect(() => {
-    if (!stats.data) return;
-    const h = historyRef.current;
-    h.rx = [...h.rx, Number(stats.data.netRxRate)].slice(-HISTORY);
-    h.tx = [...h.tx, Number(stats.data.netTxRate)].slice(-HISTORY);
-    bump((n) => n + 1);
-  }, [stats.dataUpdatedAt]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Rolling rate history for the traffic sparklines. Appended as each poll
+  // sample lands, keyed on dataUpdatedAt — the sanctioned set-state-in-render
+  // pattern for deriving state from previous renders, no effect needed.
+  const [history, setHistory] = useState<{ at: number; rx: number[]; tx: number[] }>({
+    at: 0,
+    rx: [],
+    tx: [],
+  });
+  if (stats.data && stats.dataUpdatedAt !== history.at) {
+    const at = stats.dataUpdatedAt;
+    const rx = Number(stats.data.netRxRate);
+    const tx = Number(stats.data.netTxRate);
+    setHistory((h) => ({
+      at,
+      rx: [...h.rx, rx].slice(-HISTORY),
+      tx: [...h.tx, tx].slice(-HISTORY),
+    }));
+  }
 
   // Core actions
   const [menuOpen, setMenuOpen] = useState(false);
@@ -126,9 +134,7 @@ export default function DashboardScreen() {
       }
     >
       {stats.isPending ? (
-        <View style={styles.center}>
-          <ActivityIndicator />
-        </View>
+        <DashboardSkeleton />
       ) : stats.isError ? (
         <View style={styles.center}>
           <Text style={styles.errorText}>{stats.error.message}</Text>
@@ -197,8 +203,8 @@ export default function DashboardScreen() {
               <Text variant="labelMedium" style={{ color: theme.colors.onSurfaceVariant }}>
                 Live traffic
               </Text>
-              <TrafficRow label="Download" rate={Number(d.netRxRate)} history={historyRef.current.rx} />
-              <TrafficRow label="Upload" rate={Number(d.netTxRate)} history={historyRef.current.tx} />
+              <TrafficRow label="Download" rate={Number(d.netRxRate)} history={history.rx} />
+              <TrafficRow label="Upload" rate={Number(d.netTxRate)} history={history.tx} />
               <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
                 Since reboot: ↓ {fmtBytes(d.rebootRx)} · ↑ {fmtBytes(d.rebootTx)}
               </Text>
@@ -236,17 +242,37 @@ export default function DashboardScreen() {
 
 function TrafficRow({ label, rate, history }: { label: string; rate: number; history: number[] }) {
   const theme = useTheme();
+  const value = fmtRate(rate);
   return (
     <View style={styles.trafficRow}>
       <View style={styles.trafficLabel}>
         <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>
           {label}
         </Text>
-        <Text variant="titleMedium" style={styles.trafficValue}>
-          {fmtRate(rate)}
-        </Text>
+        <Animated.View key={value} entering={FadeInDown.duration(180)}>
+          <Text variant="titleMedium" style={styles.trafficValue}>
+            {value}
+          </Text>
+        </Animated.View>
       </View>
       <Sparkline values={history} width={120} height={32} />
+    </View>
+  );
+}
+
+// Mirrors the loaded layout (hero card, 2×2 stat grid, traffic card) so data
+// pops in without a layout shift.
+function DashboardSkeleton() {
+  return (
+    <View style={styles.content}>
+      <Skeleton height={132} radius={12} />
+      <StatGrid>
+        <Skeleton height={88} radius={12} style={styles.tileSkeleton} />
+        <Skeleton height={88} radius={12} style={styles.tileSkeleton} />
+        <Skeleton height={88} radius={12} style={styles.tileSkeleton} />
+        <Skeleton height={88} radius={12} style={styles.tileSkeleton} />
+      </StatGrid>
+      <Skeleton height={168} radius={12} />
     </View>
   );
 }
@@ -261,4 +287,5 @@ const styles = StyleSheet.create({
   trafficRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   trafficLabel: { gap: 0 },
   trafficValue: { fontWeight: "600" },
+  tileSkeleton: { flexBasis: "48%", flexGrow: 1 },
 });

@@ -4,8 +4,9 @@ import { useMutation, useQuery } from "@connectrpc/connect-query";
 import { useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
-import { useEffect, useState } from "react";
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from "react-native";
+import { useState } from "react";
+import { ScrollView, StyleSheet, View } from "react-native";
+import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import {
   ActivityIndicator,
   Appbar,
@@ -18,6 +19,7 @@ import {
   useTheme,
 } from "react-native-paper";
 
+import { invalidateRpcQueries } from "@/api/client";
 import { getConfig, updateRawConfig } from "@/gen/panel-PanelService_connectquery";
 
 export default function ConfigYamlScreen() {
@@ -30,9 +32,9 @@ export default function ConfigYamlScreen() {
   const [confirm, setConfirm] = useState(false);
   const [notice, setNotice] = useState("");
 
-  useEffect(() => {
-    if (config.data && yaml === null) setYaml(config.data.rawYaml);
-  }, [config.data, yaml]);
+  // Prefill once as the config lands; a refetch must not clobber edits in
+  // progress (guarded set-state-in-render, no effect needed).
+  if (config.data && yaml === null) setYaml(config.data.rawYaml);
 
   const dirty = yaml !== null && yaml !== config.data?.rawYaml;
 
@@ -42,7 +44,7 @@ export default function ConfigYamlScreen() {
     try {
       const res = await save.mutateAsync({ rawYaml: yaml });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      queryClient.invalidateQueries();
+      invalidateRpcQueries(queryClient, [getConfig]);
       setYaml(res.rawYaml);
       setNotice("Config saved — restart the core to apply");
     } catch (err) {
@@ -75,10 +77,7 @@ export default function ConfigYamlScreen() {
           )}
         </View>
       ) : (
-        <KeyboardAvoidingView
-          style={styles.root}
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
-        >
+        <KeyboardAvoidingView style={styles.root} behavior="padding">
           <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
             <TextInput
               mode="outlined"

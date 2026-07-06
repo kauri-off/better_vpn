@@ -1,11 +1,10 @@
-import { useMutation, useQuery } from "@connectrpc/connect-query";
+import { createConnectQueryKey, useMutation, useQuery } from "@connectrpc/connect-query";
 import { useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
 import { router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import {
-  ActivityIndicator,
   Appbar,
   Button,
   Dialog,
@@ -18,16 +17,21 @@ import {
   useTheme,
 } from "react-native-paper";
 
-import { POLL_MS } from "@/api/client";
+import { Skeleton } from "@/components/skeleton";
+
+import { invalidateRpcQueries, POLL_MS } from "@/api/client";
 import {
   deleteUser,
+  getServerStats,
   getUser,
+  getUserConfig,
   kickUser,
+  listUsers,
   resetUserUsage,
   updateUser,
 } from "@/gen/panel-PanelService_connectquery";
+import type { ListUsersResponse } from "@/gen/panel_pb";
 import { fmtBytes, fmtRelative, fmtTs } from "@/lib/format";
-import { useAppActive } from "@/lib/use-app-active";
 
 type Confirm = "kick" | "reset" | "delete";
 
@@ -35,15 +39,34 @@ export default function UserDetailScreen() {
   const theme = useTheme();
   const { id: idParam } = useLocalSearchParams<{ id: string }>();
   const id = Number(idParam);
-  const appActive = useAppActive();
   const queryClient = useQueryClient();
 
-  const user = useQuery(getUser, { id }, { refetchInterval: appActive ? POLL_MS : false });
+  // Seed from the users-list cache so the screen renders instantly with the
+  // row's data while the fresh GetUser fetch reconciles (both are VpnUser).
+  // Polling pauses in the background via the focusManager wiring in api/client.
+  const user = useQuery(
+    getUser,
+    { id },
+    {
+      refetchInterval: POLL_MS,
+      placeholderData: () => {
+        const cached = queryClient.getQueriesData<ListUsersResponse>({
+          queryKey: createConnectQueryKey({ schema: listUsers, cardinality: undefined }),
+        });
+        for (const [, data] of cached) {
+          const hit = data?.users.find((u) => u.id === id);
+          if (hit) return hit;
+        }
+        return undefined;
+      },
+    },
+  );
 
   const [confirm, setConfirm] = useState<Confirm | null>(null);
   const [notice, setNotice] = useState("");
 
-  const invalidate = () => queryClient.invalidateQueries();
+  const invalidate = () =>
+    invalidateRpcQueries(queryClient, [listUsers, getUser, getUserConfig, getServerStats]);
   const toggle = useMutation(updateUser);
   const kick = useMutation(kickUser);
   const reset = useMutation(resetUserUsage);
@@ -97,8 +120,14 @@ export default function UserDetailScreen() {
       </Appbar.Header>
 
       {user.isPending ? (
-        <View style={styles.center}>
-          <ActivityIndicator />
+        // Rarely visible: the list cache usually seeds this screen instantly.
+        <View style={styles.skeletonList}>
+          {Array.from({ length: 6 }, (_, i) => (
+            <View key={i} style={styles.skeletonRow}>
+              <Skeleton width={28} height={28} radius={14} />
+              <Skeleton width="60%" height={16} />
+            </View>
+          ))}
         </View>
       ) : user.isError ? (
         <View style={styles.center}>
@@ -225,4 +254,6 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12, padding: 24 },
   centerText: { textAlign: "center" },
   content: { paddingBottom: 24 },
+  skeletonList: { padding: 16, gap: 20 },
+  skeletonRow: { flexDirection: "row", alignItems: "center", gap: 16 },
 });

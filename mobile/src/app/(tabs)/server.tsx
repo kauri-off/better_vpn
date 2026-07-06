@@ -3,8 +3,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
-import { useEffect, useState } from "react";
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from "react-native";
+import { useState } from "react";
+import { ScrollView, StyleSheet, View } from "react-native";
+import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import {
   ActivityIndicator,
   Banner,
@@ -14,7 +15,6 @@ import {
   Dialog,
   Divider,
   HelperText,
-  List,
   Portal,
   SegmentedButtons,
   Snackbar,
@@ -23,6 +23,8 @@ import {
   useTheme,
 } from "react-native-paper";
 
+import { invalidateRpcQueries } from "@/api/client";
+import { Reveal } from "@/components/reveal";
 import { Screen } from "@/components/screen";
 import {
   generateCert,
@@ -126,10 +128,9 @@ function ConfigView() {
 
   const [form, setForm] = useState<ConfigForm | null>(null);
   const [notice, setNotice] = useState("");
-  // Prefill once; a refetch must not clobber edits in progress.
-  useEffect(() => {
-    if (config.data?.structured && !form) setForm(toForm(config.data.structured));
-  }, [config.data, form]);
+  // Prefill once as the config lands; a refetch must not clobber edits in
+  // progress (guarded set-state-in-render, no effect needed).
+  if (config.data?.structured && !form) setForm(toForm(config.data.structured));
 
   const set = (patch: Partial<ConfigForm>) => setForm((f) => (f ? { ...f, ...patch } : f));
 
@@ -138,7 +139,7 @@ function ConfigView() {
     try {
       const res = await save.mutateAsync({ structured: fromForm(form) });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      queryClient.invalidateQueries();
+      invalidateRpcQueries(queryClient, [getConfig, getCertInfo]);
       setForm(res.structured ? toForm(res.structured) : null);
       setNotice("Config saved — restart the core to apply");
     } catch (err) {
@@ -164,10 +165,7 @@ function ConfigView() {
   }
 
   return (
-    <KeyboardAvoidingView
-      style={styles.flex}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-    >
+    <KeyboardAvoidingView style={styles.flex} behavior="padding">
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Banner visible={!!config.data?.managedBlocksReasserted} icon="alert">
           The panel-managed auth/trafficStats blocks were edited by hand and have been
@@ -190,7 +188,9 @@ function ConfigView() {
           ]}
         />
         {form.obfsType === "salamander" && (
-          <TextInput mode="outlined" label="Obfs password" value={form.obfsPassword} onChangeText={(v) => set({ obfsPassword: v })} autoCapitalize="none" style={styles.field} />
+          <Reveal>
+            <TextInput mode="outlined" label="Obfs password" value={form.obfsPassword} onChangeText={(v) => set({ obfsPassword: v })} autoCapitalize="none" style={styles.field} />
+          </Reveal>
         )}
 
         <Text variant="titleSmall" style={styles.sectionTitle}>Bandwidth</Text>
@@ -210,10 +210,14 @@ function ConfigView() {
           ]}
         />
         {form.masqType === "proxy" && (
-          <TextInput mode="outlined" label="Proxy URL" placeholder="https://example.com" value={form.masqProxyUrl} onChangeText={(v) => set({ masqProxyUrl: v })} autoCapitalize="none" style={styles.field} />
+          <Reveal>
+            <TextInput mode="outlined" label="Proxy URL" placeholder="https://example.com" value={form.masqProxyUrl} onChangeText={(v) => set({ masqProxyUrl: v })} autoCapitalize="none" style={styles.field} />
+          </Reveal>
         )}
         {form.masqType === "string" && (
-          <TextInput mode="outlined" label="String content" value={form.masqString} onChangeText={(v) => set({ masqString: v })} multiline numberOfLines={2} style={styles.field} />
+          <Reveal>
+            <TextInput mode="outlined" label="String content" value={form.masqString} onChangeText={(v) => set({ masqString: v })} multiline numberOfLines={2} style={styles.field} />
+          </Reveal>
         )}
 
         <Text variant="titleSmall" style={styles.sectionTitle}>Resolver</Text>
@@ -228,25 +232,29 @@ function ConfigView() {
           ]}
         />
         {!["", "dns", "udp"].includes(form.resolverType) && (
-          <SegmentedButtons
-            style={styles.field}
-            value={form.resolverType}
-            onValueChange={(v) => set({ resolverType: v as ConfigForm["resolverType"] })}
-            buttons={[
-              { value: "tcp", label: "TCP" },
-              { value: "tls", label: "TLS" },
-              { value: "https", label: "HTTPS" },
-            ]}
-          />
+          <Reveal>
+            <SegmentedButtons
+              style={styles.field}
+              value={form.resolverType}
+              onValueChange={(v) => set({ resolverType: v as ConfigForm["resolverType"] })}
+              buttons={[
+                { value: "tcp", label: "TCP" },
+                { value: "tls", label: "TLS" },
+                { value: "https", label: "HTTPS" },
+              ]}
+            />
+          </Reveal>
         )}
         {form.resolverType !== "" && (
-          <>
+          <Reveal>
             <TextInput mode="outlined" label="Address" placeholder="1.1.1.1:443" value={form.resolverAddr} onChangeText={(v) => set({ resolverAddr: v })} autoCapitalize="none" style={styles.field} />
             <TextInput mode="outlined" label="Timeout" placeholder="10s" value={form.resolverTimeout} onChangeText={(v) => set({ resolverTimeout: v })} autoCapitalize="none" style={styles.field} />
             {(form.resolverType === "tls" || form.resolverType === "https") && (
-              <TextInput mode="outlined" label="SNI" value={form.resolverSni} onChangeText={(v) => set({ resolverSni: v })} autoCapitalize="none" style={styles.field} />
+              <Reveal>
+                <TextInput mode="outlined" label="SNI" value={form.resolverSni} onChangeText={(v) => set({ resolverSni: v })} autoCapitalize="none" style={styles.field} />
+              </Reveal>
             )}
-          </>
+          </Reveal>
         )}
 
         <Text variant="titleSmall" style={styles.sectionTitle}>ACL rules (one per line)</Text>
@@ -303,7 +311,7 @@ function CertView() {
         keyPath: "",
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      queryClient.invalidateQueries();
+      invalidateRpcQueries(queryClient, [getCertInfo, getConfig]);
       setOfferRestart(true);
     } catch (err) {
       setNotice(err instanceof Error ? err.message : String(err));

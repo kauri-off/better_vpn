@@ -7,9 +7,11 @@ import { BottomNavigation } from "react-native-paper";
 type McIconName = ComponentProps<typeof MaterialCommunityIcons>["name"];
 
 function iconFor(active: McIconName, inactive: McIconName) {
-  return ({ focused, color, size }: { focused: boolean; color: ColorValue; size: number }) => (
+  const TabIcon = ({ focused, color, size }: { focused: boolean; color: ColorValue; size: number }) => (
     <MaterialCommunityIcons name={focused ? active : inactive} color={color} size={size} />
   );
+  TabIcon.displayName = `TabIcon(${active})`;
+  return TabIcon;
 }
 
 // React Navigation's tab routes carry name/params; Paper's BottomNavigation
@@ -20,7 +22,6 @@ type NavRoute = { key: string; name: string; params?: object };
 // Props are loosely typed: @react-navigation/bottom-tabs isn't a direct
 // dependency under pnpm's strict layout, and this adapter only touches a
 // stable subset of them.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function MaterialTabBar({ navigation, state, descriptors, insets }: any) {
   return (
     <BottomNavigation.Bar

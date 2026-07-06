@@ -1,10 +1,9 @@
 import { useQuery } from "@connectrpc/connect-query";
 import { FlashList } from "@shopify/flash-list";
 import { router } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { RefreshControl, StyleSheet, View } from "react-native";
 import {
-  ActivityIndicator,
   Avatar,
   Badge,
   Button,
@@ -15,26 +14,37 @@ import {
   TouchableRipple,
   useTheme,
 } from "react-native-paper";
+import Animated, { FadeIn } from "react-native-reanimated";
 
 import { POLL_MS } from "@/api/client";
 import { Screen } from "@/components/screen";
+import { Skeleton } from "@/components/skeleton";
 import { listUsers } from "@/gen/panel-PanelService_connectquery";
 import type { VpnUser } from "@/gen/panel_pb";
 import { fmtBytes, fmtRelative } from "@/lib/format";
-import { useAppActive } from "@/lib/use-app-active";
 
 // The panel is a single-admin tool for modest fleets; one page of 500 covers
 // it while keeping the search server-side (same shortcut the SSH console takes).
 const PAGE_SIZE = 500;
 
+// Keystroke → RPC debounce for the server-side search.
+const SEARCH_DEBOUNCE_MS = 250;
+
 export default function UsersScreen() {
   const theme = useTheme();
-  const appActive = useAppActive();
   const [search, setSearch] = useState("");
+  // The query follows the input after a pause, so typing doesn't fire one
+  // listUsers RPC per keystroke.
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(t);
+  }, [search]);
+  // Polling pauses in the background via the focusManager wiring in api/client.
   const users = useQuery(
     listUsers,
-    { search, limit: PAGE_SIZE, offset: 0 },
-    { refetchInterval: appActive ? POLL_MS : false, placeholderData: (prev) => prev },
+    { search: debouncedSearch, limit: PAGE_SIZE, offset: 0 },
+    { refetchInterval: POLL_MS, placeholderData: (prev) => prev },
   );
 
   // Pull-to-refresh spinner is driven by the gesture only — binding it to
@@ -60,9 +70,7 @@ export default function UsersScreen() {
         />
       </View>
       {users.isPending ? (
-        <View style={styles.center}>
-          <ActivityIndicator />
-        </View>
+        <UsersSkeleton />
       ) : users.isError ? (
         <View style={styles.center}>
           <Text style={styles.centerText}>{users.error.message}</Text>
@@ -80,7 +88,7 @@ export default function UsersScreen() {
         <FlashList
           data={users.data.users}
           keyExtractor={(u) => String(u.id)}
-          renderItem={({ item }) => <UserRow user={item} />}
+          renderItem={({ item }) => <UserRow user={item} now={users.dataUpdatedAt} />}
           contentContainerStyle={styles.listContent}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
@@ -92,10 +100,29 @@ export default function UsersScreen() {
   );
 }
 
-function UserRow({ user }: { user: VpnUser }) {
+// Mirrors UserRow's layout (avatar + two text lines) during the initial load.
+function UsersSkeleton() {
+  return (
+    <View>
+      {Array.from({ length: 8 }, (_, i) => (
+        <View key={i} style={styles.row}>
+          <Skeleton width={40} height={40} radius={20} />
+          <View style={[styles.rowBody, styles.rowBodySkeleton]}>
+            <Skeleton width="55%" height={16} />
+            <Skeleton width="80%" height={12} />
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+// `now` is the query's dataUpdatedAt: at most one poll tick stale, and keeps
+// render pure (no Date.now() during render).
+function UserRow({ user, now }: { user: VpnUser; now: number }) {
   const theme = useTheme();
   const online = user.connections > 0;
-  const expired = user.expiresAt > 0n && Number(user.expiresAt) * 1000 < Date.now();
+  const expired = user.expiresAt > 0n && Number(user.expiresAt) * 1000 < now;
   const overQuota = user.quotaBytes > 0n && user.usedBytes >= user.quotaBytes;
   const usage = user.quotaBytes > 0n ? Number(user.usedBytes) / Number(user.quotaBytes) : 0;
 
@@ -111,7 +138,10 @@ function UserRow({ user }: { user: VpnUser }) {
     <TouchableRipple
       onPress={() => router.push({ pathname: "/user/[id]", params: { id: user.id } })}
     >
-      <View style={[styles.row, !user.enabled && styles.rowDisabled]}>
+      <Animated.View
+        entering={FadeIn.duration(150)}
+        style={[styles.row, !user.enabled && styles.rowDisabled]}
+      >
         <View>
           <Avatar.Text size={40} label={user.username.slice(0, 2).toUpperCase()} />
           {online && (
@@ -145,7 +175,7 @@ function UserRow({ user }: { user: VpnUser }) {
             />
           )}
         </View>
-      </View>
+      </Animated.View>
     </TouchableRipple>
   );
 }
@@ -164,6 +194,7 @@ const styles = StyleSheet.create({
   },
   rowDisabled: { opacity: 0.45 },
   rowBody: { flex: 1, gap: 2 },
+  rowBodySkeleton: { gap: 6 },
   rowTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
   rowName: { flexShrink: 1 },
   onlineDot: { position: "absolute", right: -2, top: -2 },

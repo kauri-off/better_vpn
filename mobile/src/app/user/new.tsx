@@ -3,7 +3,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
 import { useState } from "react";
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from "react-native";
+import { ScrollView, StyleSheet, View } from "react-native";
+import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import {
   Appbar,
   Button,
@@ -14,9 +15,14 @@ import {
   useTheme,
 } from "react-native-paper";
 
+import { invalidateRpcQueries } from "@/api/client";
 import { serverHost, useServers } from "@/api/servers";
 import { ExpiryField, QuotaField } from "@/components/user-form-fields";
-import { createUser } from "@/gen/panel-PanelService_connectquery";
+import {
+  createUser,
+  getServerStats,
+  listUsers,
+} from "@/gen/panel-PanelService_connectquery";
 import { quotaToBytes, type QuotaUnit } from "@/lib/quota";
 
 export default function NewUserScreen() {
@@ -48,7 +54,7 @@ export default function NewUserScreen() {
         linkHost: active ? serverHost(active.url) : "",
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      queryClient.invalidateQueries();
+      invalidateRpcQueries(queryClient, [listUsers, getServerStats]);
       // Straight to the share screen for the new credential; replace so back
       // returns to the users list, not this form.
       router.replace({ pathname: "/user/[id]/share", params: { id: res.user?.id ?? 0 } });
@@ -63,10 +69,7 @@ export default function NewUserScreen() {
         <Appbar.BackAction onPress={() => router.back()} />
         <Appbar.Content title="New user" />
       </Appbar.Header>
-      <KeyboardAvoidingView
-        style={styles.root}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-      >
+      <KeyboardAvoidingView style={styles.root} behavior="padding">
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           <TextInput
             mode="outlined"

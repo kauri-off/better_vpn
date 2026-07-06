@@ -18,7 +18,7 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": true
     },
     "web": {
       "output": "static",
@@ -36,7 +36,9 @@
       ],
       "expo-secure-store",
       "./plugins/with-release-signing",
-      "./plugins/with-cleartext-traffic"
+      "./plugins/with-cleartext-traffic",
+      "./plugins/with-arm64-only",
+      "expo-sqlite"
     ],
     "experiments": {
       "typedRoutes": true,

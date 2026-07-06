@@ -2,8 +2,9 @@ import { useMutation, useQuery } from "@connectrpc/connect-query";
 import { useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
 import { router, useLocalSearchParams } from "expo-router";
-import { useEffect, useState } from "react";
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from "react-native";
+import { useState } from "react";
+import { ScrollView, StyleSheet, View } from "react-native";
+import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import {
   ActivityIndicator,
   Appbar,
@@ -13,8 +14,14 @@ import {
   useTheme,
 } from "react-native-paper";
 
+import { invalidateRpcQueries } from "@/api/client";
 import { ExpiryField, QuotaField } from "@/components/user-form-fields";
-import { getUser, updateUser } from "@/gen/panel-PanelService_connectquery";
+import {
+  getUser,
+  getUserConfig,
+  listUsers,
+  updateUser,
+} from "@/gen/panel-PanelService_connectquery";
 import { bytesToQuota, quotaToBytes, type QuotaUnit } from "@/lib/quota";
 
 export default function EditUserScreen() {
@@ -38,16 +45,15 @@ export default function EditUserScreen() {
   const [error, setError] = useState("");
 
   // Prefill once from the fetched user; later poll updates must not stomp
-  // in-progress edits.
-  useEffect(() => {
-    if (!user.data || loaded) return;
+  // in-progress edits (guarded set-state-in-render, no effect needed).
+  if (user.data && !loaded) {
     setExpiresAt(Number(user.data.expiresAt));
     const q = bytesToQuota(user.data.quotaBytes);
     setQuota({ ...q, unlimited: user.data.quotaBytes <= 0n });
     setNote(user.data.note);
     setToken(user.data.token);
     setLoaded(true);
-  }, [user.data, loaded]);
+  }
 
   const submit = async () => {
     setError("");
@@ -65,7 +71,12 @@ export default function EditUserScreen() {
         ...(tokenChanged ? { token: token.trim() } : {}),
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      queryClient.invalidateQueries();
+      invalidateRpcQueries(queryClient, [
+        listUsers,
+        getUser,
+        // A rotated token changes the stored connection link/QR too.
+        ...(tokenChanged ? [getUserConfig] : []),
+      ]);
       router.back();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -83,10 +94,7 @@ export default function EditUserScreen() {
           <ActivityIndicator />
         </View>
       ) : (
-        <KeyboardAvoidingView
-          style={styles.root}
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
-        >
+        <KeyboardAvoidingView style={styles.root} behavior="padding">
           <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
             <ExpiryField value={expiresAt} onChange={setExpiresAt} />
             <QuotaField {...quota} onChange={setQuota} />
@@ -100,7 +108,7 @@ export default function EditUserScreen() {
               style={styles.field}
             />
             <HelperText type="info" visible>
-              Changing the token invalidates the user's current connection link.
+              Changing the token invalidates the user&apos;s current connection link.
             </HelperText>
             <TextInput
               mode="outlined"

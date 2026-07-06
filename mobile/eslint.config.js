@@ -5,6 +5,7 @@ const expoConfig = require("eslint-config-expo/flat");
 module.exports = defineConfig([
   expoConfig,
   {
-    ignores: ["dist/*"],
+    // src/gen is buf-generated; its boilerplate trips unused-directive warnings.
+    ignores: ["dist/*", "src/gen/*"],
   }
 ]);

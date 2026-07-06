@@ -5,7 +5,8 @@
 // with an unauthenticated Login RPC before anything is persisted.
 import { router } from "expo-router";
 import { useState } from "react";
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from "react-native";
+import { ScrollView, StyleSheet, View } from "react-native";
+import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import {
   Appbar,
   Button,
@@ -113,10 +114,7 @@ export default function ServersScreen() {
         {router.canGoBack() && authed ? <Appbar.BackAction onPress={() => router.back()} /> : null}
         <Appbar.Content title="Servers" />
       </Appbar.Header>
-      <KeyboardAvoidingView
-        style={styles.root}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-      >
+      <KeyboardAvoidingView style={styles.root} behavior="padding">
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           {servers.length > 0 && (
             <>

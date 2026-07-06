@@ -2,14 +2,20 @@ import { useMutation, useQuery } from "@connectrpc/connect-query";
 import { useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import { Button, HelperText, List, Snackbar, TextInput } from "react-native-paper";
 import Constants from "expo-constants";
 
+import { invalidateRpcQueries } from "@/api/client";
 import { useServers } from "@/api/servers";
+import { Reveal } from "@/components/reveal";
 import { Screen } from "@/components/screen";
-import { getSettings, updateSettings } from "@/gen/panel-PanelService_connectquery";
+import {
+  getSettings,
+  getUserConfig,
+  updateSettings,
+} from "@/gen/panel-PanelService_connectquery";
 
 export default function SettingsScreen() {
   const queryClient = useQueryClient();
@@ -22,12 +28,12 @@ export default function SettingsScreen() {
   const [sni, setSni] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
 
-  useEffect(() => {
-    if (settings.data && port === null && sni === null) {
-      setPort(settings.data.port);
-      setSni(settings.data.sni);
-    }
-  }, [settings.data, port, sni]);
+  // Prefill once as the settings land; a refetch must not clobber edits in
+  // progress (guarded set-state-in-render, no effect needed).
+  if (settings.data && port === null && sni === null) {
+    setPort(settings.data.port);
+    setSni(settings.data.sni);
+  }
 
   const dirty =
     settings.data != null &&
@@ -40,7 +46,8 @@ export default function SettingsScreen() {
     try {
       const res = await saveSettings.mutateAsync({ port: port.trim(), sni: sni.trim() });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      queryClient.invalidateQueries();
+      // Port/SNI feed the generated links, so cached share screens go stale.
+      invalidateRpcQueries(queryClient, [getSettings, getUserConfig]);
       setPort(res.port);
       setSni(res.sni);
       setNotice("Panel settings saved — affects links issued from now on");
@@ -79,14 +86,16 @@ export default function SettingsScreen() {
               afterwards.
             </HelperText>
             {dirty && (
-              <Button
-                mode="contained"
-                onPress={submitSettings}
-                loading={saveSettings.isPending}
-                disabled={saveSettings.isPending}
-              >
-                Save
-              </Button>
+              <Reveal>
+                <Button
+                  mode="contained"
+                  onPress={submitSettings}
+                  loading={saveSettings.isPending}
+                  disabled={saveSettings.isPending}
+                >
+                  Save
+                </Button>
+              </Reveal>
             )}
           </View>
         </List.Section>

@@ -1,8 +1,8 @@
-// Multi-server store. The server list ({id, name, url}) lives in
-// AsyncStorage; each server's admin token lives in SecureStore (Android
-// Keystore) under its own key so removing a server can't orphan another's
-// credential. `url` is always the normalized API base (…/api).
-import AsyncStorage from "@react-native-async-storage/async-storage";
+// Multi-server store. The server list ({id, name, url}) lives in the
+// SQLite-backed KV store; each server's admin token lives in SecureStore
+// (Android Keystore) under its own key so removing a server can't orphan
+// another's credential. `url` is always the normalized API base (…/api).
+import Storage from "expo-sqlite/kv-store";
 import * as SecureStore from "expo-secure-store";
 import {
   createContext,
@@ -74,8 +74,8 @@ export function ServersProvider({ children }: { children: ReactNode }) {
     (async () => {
       try {
         const [rawServers, rawActive] = await Promise.all([
-          AsyncStorage.getItem(SERVERS_KEY),
-          AsyncStorage.getItem(ACTIVE_KEY),
+          Storage.getItem(SERVERS_KEY),
+          Storage.getItem(ACTIVE_KEY),
         ]);
         const list: PanelServer[] = rawServers ? JSON.parse(rawServers) : [];
         setServers(list);
@@ -92,7 +92,7 @@ export function ServersProvider({ children }: { children: ReactNode }) {
 
   const persistServers = useCallback(async (list: PanelServer[]) => {
     setServers(list);
-    await AsyncStorage.setItem(SERVERS_KEY, JSON.stringify(list));
+    await Storage.setItem(SERVERS_KEY, JSON.stringify(list));
   }, []);
 
   const setActive = useCallback(
@@ -100,7 +100,7 @@ export function ServersProvider({ children }: { children: ReactNode }) {
       const token = await SecureStore.getItemAsync(tokenKey(id));
       setActiveId(id);
       setActiveToken(token);
-      await AsyncStorage.setItem(ACTIVE_KEY, id);
+      await Storage.setItem(ACTIVE_KEY, id);
     },
     [],
   );
@@ -117,7 +117,7 @@ export function ServersProvider({ children }: { children: ReactNode }) {
       await persistServers([...servers, server]);
       setActiveId(server.id);
       setActiveToken(token);
-      await AsyncStorage.setItem(ACTIVE_KEY, server.id);
+      await Storage.setItem(ACTIVE_KEY, server.id);
       return server;
     },
     [servers, persistServers],
@@ -130,7 +130,7 @@ export function ServersProvider({ children }: { children: ReactNode }) {
       if (activeId === id) {
         setActiveId(null);
         setActiveToken(null);
-        await AsyncStorage.removeItem(ACTIVE_KEY);
+        await Storage.removeItem(ACTIVE_KEY);
       }
     },
     [servers, activeId, persistServers],
