@@ -19,6 +19,7 @@ import Animated, { FadeInDown } from "react-native-reanimated";
 
 import { POLL_MS } from "@/api/client";
 import { useServers } from "@/api/servers";
+import { OfflineBanner } from "@/components/offline-banner";
 import { Screen } from "@/components/screen";
 import { Skeleton } from "@/components/skeleton";
 import { Sparkline } from "@/components/sparkline";
@@ -135,7 +136,7 @@ export default function DashboardScreen() {
     >
       {stats.isPending ? (
         <DashboardSkeleton />
-      ) : stats.isError ? (
+      ) : stats.isError && !d ? (
         <View style={styles.center}>
           <Text style={styles.errorText}>{stats.error.message}</Text>
           <Button mode="contained-tonal" onPress={() => stats.refetch()}>
@@ -149,6 +150,7 @@ export default function DashboardScreen() {
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }
         >
+          <OfflineBanner visible={stats.isError} message={stats.error?.message} />
           {/* Hero: core + host status */}
           <Card mode="contained">
             <Card.Content style={styles.heroContent}>

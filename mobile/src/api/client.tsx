@@ -101,7 +101,15 @@ export function PanelConnectProvider({ children }: { children: ReactNode }) {
     onUnauthenticatedNow = clearActiveToken;
   }, [activeToken, clearActiveToken]);
 
-  const queryClient = useMemo(() => new QueryClient(), []);
+  // Fail fast on an unreachable panel: one quick retry instead of the default
+  // three with exponential backoff (~7s of skeleton before an error shows).
+  const queryClient = useMemo(
+    () =>
+      new QueryClient({
+        defaultOptions: { queries: { retry: 1, retryDelay: 800 } },
+      }),
+    [],
+  );
 
   const transport = useMemo(
     () =>

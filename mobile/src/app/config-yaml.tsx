@@ -5,7 +5,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
 import { useState } from "react";
-import { ScrollView, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import {
   ActivityIndicator,
@@ -78,19 +78,18 @@ export default function ConfigYamlScreen() {
         </View>
       ) : (
         <KeyboardAvoidingView style={styles.root} behavior="padding">
-          <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-            <TextInput
-              mode="outlined"
-              value={yaml}
-              onChangeText={setYaml}
-              multiline
-              autoCapitalize="none"
-              autoCorrect={false}
-              spellCheck={false}
-              style={styles.editor}
-              contentStyle={styles.editorContent}
-            />
-          </ScrollView>
+          <TextInput
+            mode="outlined"
+            value={yaml}
+            onChangeText={setYaml}
+            multiline
+            autoCapitalize="none"
+            autoCorrect={false}
+            spellCheck={false}
+            textAlignVertical="top"
+            style={styles.editor}
+            contentStyle={styles.editorContent}
+          />
         </KeyboardAvoidingView>
       )}
 
@@ -121,7 +120,6 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12, padding: 24 },
   centerText: { textAlign: "center" },
-  content: { padding: 12, paddingBottom: 32 },
-  editor: { minHeight: 400 },
-  editorContent: { fontFamily: "monospace", fontSize: 13 },
+  editor: { flex: 1, margin: 12, marginTop: 4 },
+  editorContent: { fontFamily: "monospace", fontSize: 13, paddingTop: 12 },
 });

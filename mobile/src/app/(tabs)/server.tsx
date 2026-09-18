@@ -228,7 +228,7 @@ function ConfigView() {
             { value: "", label: "Off" },
             { value: "dns", label: "DNS" },
             { value: "udp", label: "UDP" },
-            { value: "more", label: "TCP/TLS/HTTPS" },
+            { value: "more", label: "Other" },
           ]}
         />
         {!["", "dns", "udp"].includes(form.resolverType) && (

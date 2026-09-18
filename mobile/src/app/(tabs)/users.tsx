@@ -1,7 +1,7 @@
 import { useQuery } from "@connectrpc/connect-query";
-import { FlashList } from "@shopify/flash-list";
+import { FlashList, type FlashListRef } from "@shopify/flash-list";
 import { router } from "expo-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { RefreshControl, StyleSheet, View } from "react-native";
 import {
   Avatar,
@@ -17,6 +17,7 @@ import {
 import Animated, { FadeIn } from "react-native-reanimated";
 
 import { POLL_MS } from "@/api/client";
+import { OfflineBanner } from "@/components/offline-banner";
 import { Screen } from "@/components/screen";
 import { Skeleton } from "@/components/skeleton";
 import { listUsers } from "@/gen/panel-PanelService_connectquery";
@@ -40,6 +41,12 @@ export default function UsersScreen() {
     const t = setTimeout(() => setDebouncedSearch(search), SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(t);
   }, [search]);
+  // A new result set starts from the top; FlashList would otherwise keep the
+  // previous scroll offset and hide the first matches.
+  const list = useRef<FlashListRef<VpnUser>>(null);
+  useEffect(() => {
+    list.current?.scrollToOffset({ offset: 0, animated: false });
+  }, [debouncedSearch]);
   // Polling pauses in the background via the focusManager wiring in api/client.
   const users = useQuery(
     listUsers,
@@ -69,9 +76,10 @@ export default function UsersScreen() {
           mode="bar"
         />
       </View>
+      <OfflineBanner visible={users.isError && !!users.data} message={users.error?.message} />
       {users.isPending ? (
         <UsersSkeleton />
-      ) : users.isError ? (
+      ) : users.isError && !users.data ? (
         <View style={styles.center}>
           <Text style={styles.centerText}>{users.error.message}</Text>
           <Button mode="contained-tonal" onPress={() => users.refetch()}>
@@ -86,6 +94,7 @@ export default function UsersScreen() {
         </View>
       ) : (
         <FlashList
+          ref={list}
           data={users.data.users}
           keyExtractor={(u) => String(u.id)}
           renderItem={({ item }) => <UserRow user={item} now={users.dataUpdatedAt} />}

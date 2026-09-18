@@ -98,6 +98,7 @@ export function QuotaField({
               value={unit}
               onValueChange={(u) => onChange({ value, unit: u as QuotaUnit, unlimited })}
               buttons={QUOTA_UNITS.map((u) => ({ value: u, label: u }))}
+              density="small"
               style={styles.quotaUnits}
               theme={theme}
             />
@@ -111,5 +112,5 @@ export function QuotaField({
 const styles = StyleSheet.create({
   quotaRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16 },
   quotaInput: { flex: 1 },
-  quotaUnits: { flexShrink: 0, width: 180 },
+  quotaUnits: { flexShrink: 1 },
 });
