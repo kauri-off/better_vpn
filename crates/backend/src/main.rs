@@ -31,10 +31,8 @@ use vpn_proto::panel::panel_service_server::PanelServiceServer;
 #[derive(Parser)]
 #[command(name = "vpn-backend", version)]
 struct Cli {
-    /// Load environment (DATABASE_URL, GRPC_ADDR, ...) from this file before
-    /// running, so bootstrap commands don't need it exported. Lines are
-    /// `KEY=VALUE`; blanks and `#` comments are ignored. Variables already set
-    /// in the real environment are left untouched.
+    /// Load KEY=VALUE lines (DATABASE_URL, RUST_LOG) from this file; variables
+    /// already set in the environment win.
     #[arg(long, value_name = "PATH", global = true)]
     env_file: Option<PathBuf>,
 
@@ -72,8 +70,13 @@ enum Command {
         #[command(subcommand)]
         action: AdminAction,
     },
-    /// Set a runtime setting in the database.
-    Set { key: String, value: String },
+    /// Set a runtime setting in the database (see `vpn-backend set --help`).
+    Set {
+        /// One of: sni, stats_url, poll_interval_secs, grpc_addr, auth_addr,
+        /// core_service, core_bin, core_config, core_download_url
+        key: String,
+        value: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -125,9 +128,10 @@ async fn main() -> anyhow::Result<()> {
             Ok(())
         }
         Command::Set { key, value } => {
+            let value = settings::Settings::validate(&key, &value).map_err(anyhow::Error::msg)?;
             let mut conn = pool.get()?;
             queries::set_setting(&mut conn, &key, &value)?;
-            println!("set {key}");
+            println!("set {key} = {value}");
             Ok(())
         }
         Command::Serve => serve(pool).await,
@@ -137,21 +141,12 @@ async fn main() -> anyhow::Result<()> {
 async fn serve(pool: vpn_db::DbPool) -> anyhow::Result<()> {
     let state = AppState::new(pool);
 
-    // The stats-API secret is a localhost-only shared secret between the panel
-    // and the core's trafficStats endpoint, so there's no reason for an operator
-    // to pick it. Generate one on first startup and persist it; being persisted,
-    // it stays stable across restarts, so the reassert below applies it to
-    // config.yaml exactly once and the core never needs it changed again.
-    // Best-effort seed; ensure_stats_secret is idempotent and self-heals on the
-    // next reassert if the DB is unreachable right now (see managed_blocks).
     settings::Settings::ensure_stats_secret(&state.pool);
+    settings::Settings::migrate_legacy_port(&state.pool);
 
-    // Reassert managed config blocks on startup, and make sure the TLS cert the
-    // config points at actually exists — otherwise the core refuses to start on
-    // first boot, before an operator has generated one from the panel.
-    // (best-effort; the config file may not exist yet during first setup).
+    // Reassert managed blocks and make sure a TLS cert exists so the core can start.
     {
-        let managed = managed::managed_blocks(&state);
+        let managed = managed::managed_blocks(&state.pool);
         let mgr = config::ConfigManager::new(settings::Settings::core_config(&state.pool));
         if mgr.path().exists() {
             match mgr.ensure_managed(&managed) {
@@ -164,8 +159,7 @@ async fn serve(pool: vpn_db::DbPool) -> anyhow::Result<()> {
                     match cert::ensure_default_cert(&sc.tls_cert, &sc.tls_key) {
                         Ok(true) => tracing::info!(
                             "generated a default self-signed TLS cert at {} so the core can \
-                             start; regenerate it from the panel (Settings -> TLS certificate) \
-                             to customise",
+                             start; regenerate it from the panel (Server -> TLS) to customise",
                             sc.tls_cert
                         ),
                         Ok(false) => {}

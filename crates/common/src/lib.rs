@@ -14,26 +14,31 @@ pub enum CommonError {
 /// Settings keys persisted in the `settings` table.
 pub mod settings_keys {
     pub const STATS_SECRET: &str = "stats_secret";
-    // SHA-256 hash (hex) of the single admin access token. The token itself is
-    // never stored. Empty/absent => the panel is locked (no valid token) until
-    // `vpn-backend admin set-token` is run.
     pub const ADMIN_TOKEN_HASH: &str = "admin_token_hash";
     pub const STATS_URL: &str = "stats_url";
     pub const CORE_CONFIG: &str = "core_config";
-    // Optional override of the core release asset URL for panel-driven updates.
     pub const CORE_DOWNLOAD_URL: &str = "core_download_url";
-    pub const PORT: &str = "port"; // port for client URIs (host comes from the panel URL)
     pub const SNI: &str = "sni";
     pub const POLL_INTERVAL_SECS: &str = "poll_interval_secs";
-    // gRPC + gRPC-Web management listener (fronted by Caddy). Read once at startup.
     pub const GRPC_ADDR: &str = "grpc_addr";
-    // Hysteria `auth.type: http` backend listener. Authoritative source for the
-    // core's `auth.http.url`, which the panel derives from this on every save.
     pub const AUTH_ADDR: &str = "auth_addr";
-    // systemd unit of the Hysteria core, restarted via `systemctl` on config/cert changes.
     pub const CORE_SERVICE: &str = "core_service";
-    // Path to the Hysteria core binary (version probe + panel-driven update target).
     pub const CORE_BIN: &str = "core_bin";
+    /// Legacy key: the link port used to live here; now it is the core's `listen` port.
+    pub const LEGACY_PORT: &str = "port";
+
+    /// Keys accepted by `vpn-backend set`.
+    pub const EDITABLE: &[&str] = &[
+        SNI,
+        STATS_URL,
+        POLL_INTERVAL_SECS,
+        GRPC_ADDR,
+        AUTH_ADDR,
+        CORE_SERVICE,
+        CORE_BIN,
+        CORE_CONFIG,
+        CORE_DOWNLOAD_URL,
+    ];
 }
 
 /// Connection info needed to build a hysteria2:// client URI.

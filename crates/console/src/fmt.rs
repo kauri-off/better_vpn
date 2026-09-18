@@ -201,18 +201,16 @@ pub fn print_cert(c: &pb::CertInfo) {
 }
 
 pub fn print_settings(s: &pb::PanelSettings) {
-    println!(
-        "port : {}",
-        if s.port.is_empty() {
-            "(core listen port)"
-        } else {
-            &s.port
-        }
-    );
-    println!(
-        "sni  : {}",
-        if s.sni.is_empty() { "(none)" } else { &s.sni }
-    );
+    let none = |v: &str| if v.is_empty() { "(none)".to_string() } else { v.to_string() };
+    println!("sni                : {}", none(&s.sni));
+    println!("stats_url          : {}", s.stats_url);
+    println!("poll_interval_secs : {}", s.poll_interval_secs);
+    println!("grpc_addr          : {}  (panel restart to apply)", s.grpc_addr);
+    println!("auth_addr          : {}  (panel restart to apply)", s.auth_addr);
+    println!("core_service       : {}", s.core_service);
+    println!("core_bin           : {}", s.core_bin);
+    println!("core_config        : {}", s.core_config);
+    println!("core_download_url  : {}", none(&s.core_download_url));
 }
 
 pub fn print_structured(s: &pb::HysteriaConfig) {

@@ -1,12 +1,12 @@
-import { LayoutDashboard, Users, FileCog, Settings, type LucideIcon } from "lucide-react";
+import { LayoutDashboard, Users, ServerCog, SlidersHorizontal, type LucideIcon } from "lucide-react";
 
 export type NavItem = { to: string; label: string; icon: LucideIcon };
 
 export const NAV_ITEMS: NavItem[] = [
   { to: "/stats", label: "Dashboard", icon: LayoutDashboard },
   { to: "/users", label: "Users", icon: Users },
-  { to: "/config", label: "Config", icon: FileCog },
-  { to: "/settings", label: "Settings", icon: Settings },
+  { to: "/server", label: "Server", icon: ServerCog },
+  { to: "/panel", label: "Panel", icon: SlidersHorizontal },
 ];
 
 export function titleForPath(pathname: string): string {

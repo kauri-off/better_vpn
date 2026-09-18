@@ -1,22 +1,15 @@
 //! Builds the panel-managed config blocks (auth + trafficStats) that the panel
-//! reasserts into the Hysteria config on every save and on startup, so a manual
-//! edit can never sever the panel<->core integration.
+//! reasserts into the Hysteria config on every save and on startup.
 
 use crate::config::model::ManagedBlocks;
 use crate::settings::Settings;
-use crate::state::AppState;
+use vpn_db::DbPool;
 
-/// Build the managed-blocks descriptor from current app config + settings.
-pub fn managed_blocks(state: &AppState) -> ManagedBlocks {
-    // The auth endpoint binds to the `auth_addr` setting, which is authoritative:
-    // Hysteria reaches it at the same host, so we derive `auth.http.url` from it
-    // here and reassert it into config.yaml, overwriting any manual edit.
-    let auth_url = format!("http://{}/auth", Settings::auth_addr(&state.pool));
+pub fn managed_blocks(pool: &DbPool) -> ManagedBlocks {
     ManagedBlocks {
-        auth_url,
-        stats_listen: stats_listen_from_url(&Settings::stats_url(&state.pool)),
-        // Self-heals if the boot-time seed attempt failed (e.g. DB was down).
-        stats_secret: Settings::ensure_stats_secret(&state.pool),
+        auth_url: format!("http://{}/auth", Settings::auth_addr(pool)),
+        stats_listen: stats_listen_from_url(&Settings::stats_url(pool)),
+        stats_secret: Settings::ensure_stats_secret(pool),
     }
 }
 

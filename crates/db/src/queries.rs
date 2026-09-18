@@ -154,6 +154,11 @@ pub fn set_setting(conn: &mut DbConn, key: &str, value: &str) -> Result<(), DbEr
     Ok(())
 }
 
+pub fn delete_setting(conn: &mut DbConn, key: &str) -> Result<(), DbError> {
+    diesel::delete(settings::table.find(key)).execute(conn)?;
+    Ok(())
+}
+
 pub fn all_settings(conn: &mut DbConn) -> Result<Vec<Setting>, DbError> {
     Ok(settings::table.select(Setting::as_select()).load(conn)?)
 }

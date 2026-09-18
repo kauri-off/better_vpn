@@ -15,7 +15,7 @@ config.local.*
 *.bak.*
 
 # Local deploy scripts
-deploy-dev.ps1
+deploy-dev.sh
 
 # OS
 .DS_Store

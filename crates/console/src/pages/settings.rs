@@ -1,4 +1,4 @@
-//! Panel settings page: view/edit the DB-backed link settings (port, sni).
+//! Panel settings page: view/edit the DB-backed settings.
 
 use vpn_proto::panel as pb;
 
@@ -35,18 +35,32 @@ fn edit(ctx: &mut Ctx) {
     let Some(req) = ui::report(authed(pb::Empty {})) else {
         return;
     };
-    let Some(cur) = ui::report(ctx.call(|mut c| async move { c.get_settings(req).await })) else {
+    let Some(mut s) = ui::report(ctx.call(|mut c| async move { c.get_settings(req).await })) else {
         return;
     };
 
-    let Ok(port) = ui::input_default("port (blank = core listen port)", &cur.port) else {
+    macro_rules! ask {
+        ($field:ident, $prompt:expr) => {
+            let Ok(v) = ui::input_default($prompt, &s.$field) else {
+                return;
+            };
+            s.$field = v;
+        };
+    }
+    ask!(sni, "sni (blank = none)");
+    ask!(stats_url, "stats_url");
+    let Ok(poll) = ui::input_default("poll_interval_secs", &s.poll_interval_secs.to_string()) else {
         return;
     };
-    let Ok(sni) = ui::input_default("sni (blank = none)", &cur.sni) else {
-        return;
-    };
+    s.poll_interval_secs = poll.trim().parse().unwrap_or(0);
+    ask!(grpc_addr, "grpc_addr (panel restart to apply)");
+    ask!(auth_addr, "auth_addr (panel restart to apply)");
+    ask!(core_service, "core_service");
+    ask!(core_bin, "core_bin");
+    ask!(core_config, "core_config");
+    ask!(core_download_url, "core_download_url (blank = latest release)");
 
-    let Some(req) = ui::report(authed(pb::PanelSettings { port, sni })) else {
+    let Some(req) = ui::report(authed(s)) else {
         return;
     };
     if let Some(s) = ui::report(ctx.call(|mut c| async move { c.update_settings(req).await })) {

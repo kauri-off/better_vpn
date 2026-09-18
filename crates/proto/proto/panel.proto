@@ -281,15 +281,29 @@ message GenerateCertRequest {
 }
 
 // ---- Panel settings ----
-// Runtime, DB-backed settings editable from the panel. These feed the
-// hysteria2:// connection links the panel generates, so changing them affects
-// every link issued afterwards.
+// Runtime, DB-backed settings. Values not about the Hysteria config itself:
+// client-link parameters, panel listeners, core paths.
 message PanelSettings {
-  // Port clients dial (e.g. "443"). The host half of the connection link is the
-  // host the admin is browsing the panel on (passed per-request as link_host),
-  // so only the port is configured here. Empty => the core's listen port.
-  string port = 1;
+  reserved 1; // was port; the link port is now the core's `listen` port
   // TLS SNI clients present. Client-side / DPI camouflage only: the self-signed
   // cert has no SAN, so any value (or none) is accepted.
   string sni = 2;
+  // Traffic Stats API base URL, e.g. "http://127.0.0.1:9999". The managed
+  // trafficStats.listen block is derived from it.
+  string stats_url = 3;
+  // Stats poll interval in seconds (min 2).
+  int32 poll_interval_secs = 4;
+  // gRPC + gRPC-Web management listener. Applied on panel restart.
+  string grpc_addr = 5;
+  // Hysteria auth backend listener; auth.http.url is derived from it. Applied
+  // on panel restart.
+  string auth_addr = 6;
+  // systemd unit of the Hysteria core.
+  string core_service = 7;
+  // Path to the Hysteria core binary.
+  string core_bin = 8;
+  // Path to the Hysteria config.yaml.
+  string core_config = 9;
+  // Core release asset URL for updates. Empty => latest for this architecture.
+  string core_download_url = 10;
 }

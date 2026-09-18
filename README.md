@@ -46,23 +46,15 @@ sudo install vpnctl /usr/local/bin/vpnctl
 
 sudo cp deploy/panel.env.example /etc/better_vpn/panel.env
 
-ENVF=/etc/better_vpn/panel.env
-# Set the admin access token (this single token logs into the panel and vpnctl).
-# Omit the value to have a strong random one generated. The token is printed
-# once and stored only as a hash — copy it now.
-sudo -u better_vpn vpn-backend --env-file $ENVF admin set-token
-sudo -u better_vpn vpn-backend --env-file $ENVF set port 1935
-sudo -u better_vpn vpn-backend --env-file $ENVF set sni google.com
-
-# Optional: every DB-backed setting with its default (see panel.env.example).
-# sudo -u better_vpn vpn-backend --env-file $ENVF set stats_url          http://127.0.0.1:9999 # Traffic Stats API base URL
-# sudo -u better_vpn vpn-backend --env-file $ENVF set core_config        /etc/hysteria/config.yaml # Hysteria config.yaml path
-# sudo -u better_vpn vpn-backend --env-file $ENVF set poll_interval_secs 10                    # stats poll interval (seconds)
-# sudo -u better_vpn vpn-backend --env-file $ENVF set grpc_addr          127.0.0.1:50051       # management listener (restart to apply)
-# sudo -u better_vpn vpn-backend --env-file $ENVF set auth_addr          127.0.0.1:8080        # Hysteria auth listener (restart to apply)
-# sudo -u better_vpn vpn-backend --env-file $ENVF set core_service       hysteria.service      # systemd unit restarted by the panel
-# sudo -u better_vpn vpn-backend --env-file $ENVF set core_bin           /var/lib/better_vpn/bin/hysteria # core binary path
+# Set the admin access token (logs into the panel, vpnctl and the app). Omit the
+# value to generate a strong random one. It is printed once and stored only as
+# a hash — copy it now.
+sudo -u better_vpn vpn-backend --env-file /etc/better_vpn/panel.env admin set-token
 ```
+
+Everything else (port, SNI, paths, listeners) is configured after login in the
+panel's **Server** and **Panel** tabs or in `vpnctl`. See [Settings](#settings)
+for the full list and CLI equivalents.
 
 ### systemd
 
@@ -80,8 +72,8 @@ sudo cp deploy/polkit-better-vpn.rules /etc/polkit-1/rules.d/49-better-vpn.rules
 sudo systemctl restart polkit
 ```
 
-The unit name is `hysteria.service` by default; override it with
-`vpn-backend --env-file $ENVF set core_service <unit>` (and match it in the rule).
+The rule matches `hysteria.service`; if you rename the unit in Panel → Hysteria
+core, edit the rule to match.
 
 ### (Optional) Web panel + Caddy (subpath)
 
@@ -139,6 +131,32 @@ vpnctl
 
 ---
 
+## Settings
+
+Three places hold configuration:
+
+| Where | What | Edit with |
+|---|---|---|
+| `/etc/better_vpn/panel.env` | `DATABASE_URL`, `RUST_LOG` | text editor, then restart `vpn-panel` |
+| `/etc/hysteria/config.yaml` | everything Hysteria itself reads: port, TLS, obfs, bandwidth, masquerade, ACL, resolver | **Server** tab, `vpnctl` → Config, or by hand (the panel keeps the `auth` and `trafficStats` blocks in step) |
+| SQLite `settings` table | panel runtime settings below | **Panel** tab, `vpnctl` → Panel settings, or `vpn-backend --env-file /etc/better_vpn/panel.env set <key> <value>` |
+
+| Key | Default | Meaning |
+|---|---|---|
+| `sni` | *(none)* | TLS SNI written into client links |
+| `stats_url` | `http://127.0.0.1:9999` | Hysteria Traffic Stats API base URL |
+| `poll_interval_secs` | `10` | how often the panel polls stats (min 2) |
+| `grpc_addr` | `127.0.0.1:50051` | panel API listener; restart `vpn-panel` to apply |
+| `auth_addr` | `127.0.0.1:8080` | Hysteria auth backend listener; restart `vpn-panel` to apply |
+| `core_service` | `hysteria.service` | systemd unit the panel restarts |
+| `core_bin` | `/var/lib/better_vpn/bin/hysteria` | core binary path |
+| `core_config` | `/etc/hysteria/config.yaml` | Hysteria config path |
+| `core_download_url` | *(latest release)* | override for **Update core** |
+
+Unknown keys and malformed values are rejected by `set`.
+
+---
+
 ## Clients
 
 The panel issues two representations of every user's connection, both pinned
@@ -149,5 +167,5 @@ to the server's self-signed certificate so `insecure` is never needed:
 - **sing-box outbound JSON** for sing-box 1.13+. sing-box does not read
   `pinSHA256`; it pins by `tls.certificate_public_key_sha256` (base64 SHA-256 of
   the certificate's public key), so the panel emits a ready outbound with that
-  value. Both hashes are shown on the Settings → Certificate card. Regenerating
-  the cert invalidates both.
+  value. Both hashes are shown on the Server → TLS certificate card, click to
+  copy. Regenerating the cert invalidates both.

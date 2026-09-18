@@ -9,9 +9,8 @@
 
 listen: :443
 
-# --- TLS: static self-signed cert/key. Generate from the panel
-# (Settings -> TLS certificate -> Generate), which writes these files and fills
-# in the paths below. Clients trust it by pinned fingerprint, not hostname. ---
+# --- TLS: self-signed cert/key. The panel generates one on first start and
+# from Server -> TLS certificate. Clients pin it, not the hostname. ---
 tls:
   cert: /etc/hysteria/fullchain.pem
   key: /etc/hysteria/privkey.pem

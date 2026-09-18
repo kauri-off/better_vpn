@@ -3,7 +3,7 @@
 
 use crate::cert;
 use crate::config::model::StructuredConfig;
-use crate::config::ConfigManager;
+use crate::config::{listen_port, ConfigManager};
 use crate::managed;
 use crate::settings::Settings;
 use crate::state::AppState;
@@ -181,17 +181,11 @@ impl PanelSvc {
     /// Resolve the host/port/SNI/obfs/cert values shared by every client
     /// representation (URI, sing-box JSON) from panel settings + core config.
     fn endpoint(&self, link_host: &str) -> Endpoint {
-        let sni = Settings::sni(&self.state.pool);
-
-        // Pull obfs / port / cert mode from the managed Hysteria config.
         let sc = ConfigManager::new(Settings::core_config(&self.state.pool))
             .structured_view()
             .unwrap_or_default();
-
-        // The link's @host is the host the admin is browsing the panel on (passed
-        // by the web client). The SSH console can't know that, so it falls back to
-        // the detected public IP. The port is configured in panel settings; empty
-        // borrows the core's listen port.
+        // The @host is the host the admin is browsing the panel on; the SSH
+        // console can't know that, so it falls back to the detected public IP.
         let host = {
             let h = host_only(link_host);
             if h.is_empty() {
@@ -200,20 +194,11 @@ impl PanelSvc {
                 h
             }
         };
-        let port = {
-            let p = Settings::port(&self.state.pool);
-            let p = p.trim();
-            if p.is_empty() {
-                listen_port(&sc.listen).to_string()
-            } else {
-                p.to_string()
-            }
-        };
         let salamander = sc.obfs_type.eq_ignore_ascii_case("salamander");
         Endpoint {
             host,
-            port,
-            sni,
+            port: listen_port(&sc.listen).to_string(),
+            sni: Settings::sni(&self.state.pool),
             obfs_password: if salamander { Some(sc.obfs_password.clone()) } else { None },
             pin_sha256: cert::cert_pin_sha256(&sc.tls_cert),
             public_key_sha256: cert::cert_public_key_sha256(&sc.tls_cert),
@@ -363,31 +348,6 @@ fn host_only(addr: &str) -> String {
     }
 }
 
-/// Extract the port from a Hysteria `listen` value (e.g. `:443`, `0.0.0.0:8443`,
-/// `[::]:443`), defaulting to 443 when absent or unparseable.
-fn listen_port(listen: &str) -> u16 {
-    listen
-        .rsplit(':')
-        .next()
-        .and_then(|p| p.parse().ok())
-        .filter(|&p| p != 0)
-        .unwrap_or(443)
-}
-
-/// Replace the port in a Hysteria `listen` value while preserving the host /
-/// interface prefix. The port is the segment after the final `:`; everything
-/// before it (a bind IP, a bracketed IPv6, or nothing for a wildcard bind) is
-/// kept as-is. Examples: `:443` -> `:8443`, `1.2.3.4:443` -> `1.2.3.4:8443`,
-/// `[::]:443` -> `[::]:8443`, `` -> `:8443`.
-fn set_listen_port(listen: &str, port: &str) -> String {
-    let listen = listen.trim();
-    let host = match listen.rfind(':') {
-        Some(i) => &listen[..i],
-        None => listen,
-    };
-    format!("{host}:{port}")
-}
-
 #[cfg(test)]
 mod uri_tests {
     use super::*;
@@ -400,26 +360,6 @@ mod uri_tests {
         assert_eq!(host_only("[2001:db8::1]:443"), "2001:db8::1");
         assert_eq!(host_only("[2001:db8::1]"), "2001:db8::1");
         assert_eq!(host_only("  10.0.0.5 "), "10.0.0.5");
-    }
-
-    #[test]
-    fn parses_listen_port_with_default() {
-        assert_eq!(listen_port(":443"), 443);
-        assert_eq!(listen_port("0.0.0.0:8443"), 8443);
-        assert_eq!(listen_port("[::]:443"), 443);
-        assert_eq!(listen_port(""), 443);
-        assert_eq!(listen_port("garbage"), 443);
-    }
-
-    #[test]
-    fn sets_listen_port_preserving_host() {
-        assert_eq!(set_listen_port(":443", "8443"), ":8443");
-        assert_eq!(set_listen_port("0.0.0.0:443", "8443"), "0.0.0.0:8443");
-        assert_eq!(set_listen_port("1.2.3.4:443", "8443"), "1.2.3.4:8443");
-        assert_eq!(set_listen_port("[::]:443", "8443"), "[::]:8443");
-        // No existing port / empty listen: produce a wildcard bind on the port.
-        assert_eq!(set_listen_port("", "8443"), ":8443");
-        assert_eq!(set_listen_port("1.2.3.4", "8443"), "1.2.3.4:8443");
     }
 
     #[test]
@@ -747,7 +687,7 @@ impl PanelService for PanelSvc {
         let req = request.into_inner();
         let sc = proto_to_structured(req.structured.unwrap_or_default());
         let mgr = ConfigManager::new(Settings::core_config(&self.state.pool));
-        let managed = managed::managed_blocks(&self.state);
+        let managed = managed::managed_blocks(&self.state.pool);
         let reasserted = mgr
             .apply_structured(&sc, &managed)
             .map_err(|e| Status::invalid_argument(e.to_string()))?;
@@ -771,7 +711,7 @@ impl PanelService for PanelSvc {
         check_auth(&self.state, &request)?;
         let raw_in = request.into_inner().raw_yaml;
         let mgr = ConfigManager::new(Settings::core_config(&self.state.pool));
-        let managed = managed::managed_blocks(&self.state);
+        let managed = managed::managed_blocks(&self.state.pool);
         let reasserted = mgr
             .apply_raw(&raw_in, &managed)
             .map_err(|e| Status::invalid_argument(e.to_string()))?;
@@ -812,13 +752,7 @@ impl PanelService for PanelSvc {
         check_auth(&self.state, &request)?;
         let req = request.into_inner();
 
-        // The cert carries NO SAN by default. Clients trust it by `pinSHA256`
-        // (the cert's own fingerprint), not by hostname, so a SAN list buys
-        // nothing — and an *empty* SAN set is what frees the SNI: Hysteria's
-        // default `tls.sniGuard: dns-san` only validates the client SNI when the
-        // cert has a DNS-type SAN, so with no SAN any SNI is accepted. That's how
-        // the SNI becomes a pure client-side DPI-camouflage value, decoupled from
-        // the cert and the dialed address. We honour only explicit operator SANs.
+        // No SAN by default: clients pin the cert, and an empty SAN set frees the SNI.
         let mut sans: Vec<String> = Vec::new();
         for c in req.sans.iter().map(|s| s.trim()) {
             if !c.is_empty() && !sans.iter().any(|e| e.eq_ignore_ascii_case(c)) {
@@ -857,7 +791,7 @@ impl PanelService for PanelSvc {
         // Point the config at the new cert (apply_structured drops any acme block).
         sc.tls_cert = cert_path.clone();
         sc.tls_key = key_path.clone();
-        let managed = managed::managed_blocks(&self.state);
+        let managed = managed::managed_blocks(&self.state.pool);
         mgr.apply_structured(&sc, &managed)
             .map_err(|e| Status::internal(format!("updating config: {e}")))?;
 
@@ -872,10 +806,7 @@ impl PanelService for PanelSvc {
         request: Request<pb::Empty>,
     ) -> Result<Response<pb::PanelSettings>, Status> {
         check_auth(&self.state, &request)?;
-        Ok(Response::new(pb::PanelSettings {
-            port: Settings::port(&self.state.pool),
-            sni: Settings::sni(&self.state.pool),
-        }))
+        Ok(Response::new(settings_to_proto(&self.state.pool)))
     }
 
     async fn update_settings(
@@ -884,56 +815,54 @@ impl PanelService for PanelSvc {
     ) -> Result<Response<pb::PanelSettings>, Status> {
         check_auth(&self.state, &request)?;
         let s = request.into_inner();
-        let port = s.port.trim();
-
-        // An explicit port now drives the core's actual `listen` bind (below), so
-        // it must be a real port number. Empty keeps the current behaviour: don't
-        // manage `listen`, and let client links borrow whatever the core listens on.
-        if !port.is_empty() && !matches!(port.parse::<u16>(), Ok(p) if p != 0) {
-            return Err(Status::invalid_argument(format!(
-                "port must be a number between 1 and 65535: {port}"
-            )));
+        let poll = s.poll_interval_secs.to_string();
+        let pairs = [
+            (k::SNI, s.sni.as_str()),
+            (k::STATS_URL, s.stats_url.as_str()),
+            (k::POLL_INTERVAL_SECS, poll.as_str()),
+            (k::GRPC_ADDR, s.grpc_addr.as_str()),
+            (k::AUTH_ADDR, s.auth_addr.as_str()),
+            (k::CORE_SERVICE, s.core_service.as_str()),
+            (k::CORE_BIN, s.core_bin.as_str()),
+            (k::CORE_CONFIG, s.core_config.as_str()),
+            (k::CORE_DOWNLOAD_URL, s.core_download_url.as_str()),
+        ];
+        let mut validated = Vec::with_capacity(pairs.len());
+        for (key, value) in pairs {
+            let v = Settings::validate(key, value).map_err(Status::invalid_argument)?;
+            validated.push((key, v));
         }
 
-        let mut conn = self
-            .state
-            .pool
-            .get()
-            .map_err(|e| Status::internal(e.to_string()))?;
-        queries::set_setting(&mut conn, k::PORT, port)
-            .map_err(|e| Status::internal(e.to_string()))?;
-        queries::set_setting(&mut conn, k::SNI, s.sni.trim())
-            .map_err(|e| Status::internal(e.to_string()))?;
+        let mut conn = self.state.pool.get().map_err(db_err)?;
+        for (key, value) in &validated {
+            queries::set_setting(&mut conn, key, value).map_err(db_err)?;
+        }
         drop(conn);
 
-        // Sync the port into the Hysteria `config.yaml` `listen:` field so the
-        // daemon actually binds the configured port — the DB setting alone only
-        // affected the advertised client-link port. Preserve any host/interface
-        // prefix on `listen` (e.g. a specific bind IP) and only swap the port.
-        // A restart is required for the core to rebind, so only do it when the
-        // listen value actually changed (avoid dropping live connections on a
-        // no-op save).
-        if !port.is_empty() {
-            let mgr = ConfigManager::new(Settings::core_config(&self.state.pool));
-            let sc = mgr
-                .structured_view()
-                .map_err(|e| Status::internal(e.to_string()))?;
-            let new_listen = set_listen_port(&sc.listen, port);
-            if new_listen != sc.listen {
-                let mut updated = sc.clone();
-                updated.listen = new_listen;
-                let managed = managed::managed_blocks(&self.state);
-                mgr.apply_structured(&updated, &managed)
-                    .map_err(|e| Status::internal(e.to_string()))?;
-                self.restart_unit().await?;
-                self.state.invalidate_core_version().await;
+        // auth_addr / stats_url feed the managed config blocks; keep config.yaml in step.
+        let mgr = ConfigManager::new(Settings::core_config(&self.state.pool));
+        if mgr.path().exists() {
+            let managed = managed::managed_blocks(&self.state.pool);
+            if let Err(e) = mgr.ensure_managed(&managed) {
+                tracing::warn!("could not reassert managed config blocks: {e}");
             }
         }
+        self.state.invalidate_core_version().await;
+        Ok(Response::new(settings_to_proto(&self.state.pool)))
+    }
+}
 
-        Ok(Response::new(pb::PanelSettings {
-            port: Settings::port(&self.state.pool),
-            sni: Settings::sni(&self.state.pool),
-        }))
+fn settings_to_proto(pool: &vpn_db::DbPool) -> pb::PanelSettings {
+    pb::PanelSettings {
+        sni: Settings::sni(pool),
+        stats_url: Settings::stats_url(pool),
+        poll_interval_secs: Settings::poll_interval_secs(pool) as i32,
+        grpc_addr: Settings::grpc_addr(pool),
+        auth_addr: Settings::auth_addr(pool),
+        core_service: Settings::core_service(pool),
+        core_bin: Settings::core_bin(pool),
+        core_config: Settings::core_config(pool),
+        core_download_url: Settings::get(pool, k::CORE_DOWNLOAD_URL),
     }
 }
 

@@ -7,8 +7,8 @@ import { Topbar } from "./components/Topbar";
 import Login from "./pages/Login";
 import Users from "./pages/Users";
 import Stats from "./pages/Stats";
-import Config from "./pages/Config";
-import Settings from "./pages/Settings";
+import Server from "./pages/Server";
+import Panel from "./pages/Panel";
 
 function Shell() {
   const navigate = useNavigate();
@@ -44,8 +44,10 @@ function Shell() {
             <Routes>
               <Route path="/stats" element={<Stats />} />
               <Route path="/users" element={<Users />} />
-              <Route path="/config" element={<Config />} />
-              <Route path="/settings" element={<Settings />} />
+              <Route path="/server" element={<Server />} />
+              <Route path="/panel" element={<Panel />} />
+              <Route path="/config" element={<Navigate to="/server" replace />} />
+              <Route path="/settings" element={<Navigate to="/panel" replace />} />
               <Route path="*" element={<Navigate to="/stats" replace />} />
             </Routes>
           </div>

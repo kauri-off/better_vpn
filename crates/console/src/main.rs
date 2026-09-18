@@ -66,7 +66,7 @@ fn main_menu(ctx: &mut Ctx) {
         let items = [
             "Users",
             "Stats",
-            "Config",
+            "Server config",
             "Certificate",
             "Panel settings",
             "Core",
