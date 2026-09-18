@@ -37,6 +37,8 @@ export default function Server() {
   const [structured, setStructured] = useState<HysteriaConfig | undefined>();
   const [raw, setRaw] = useState("");
   const [port, setPort] = useState("");
+  const [tlsCert, setTlsCert] = useState("");
+  const [tlsKey, setTlsKey] = useState("");
   const [obfsEnabled, setObfsEnabled] = useState(false);
   const [obfsPassword, setObfsPassword] = useState("");
   const [bwUp, setBwUp] = useState("");
@@ -57,6 +59,8 @@ export default function Server() {
     setStructured(c.structured);
     const s = c.structured;
     setPort(listenPort(s?.listen ?? ""));
+    setTlsCert(s?.tls?.cert ?? "");
+    setTlsKey(s?.tls?.key ?? "");
     setObfsEnabled(s?.obfs?.type?.toLowerCase() === "salamander");
     setObfsPassword(s?.obfs?.password ?? "");
     setBwUp(s?.bandwidth?.up ?? "");
@@ -112,7 +116,7 @@ export default function Server() {
     saveStructuredMutation.mutate({
       structured: {
         listen: setListenPort(structured?.listen ?? "", p),
-        tls: { cert: structured?.tls?.cert ?? "", key: structured?.tls?.key ?? "" },
+        tls: { cert: tlsCert.trim(), key: tlsKey.trim() },
         obfs: {
           type: obfsEnabled ? "salamander" : "",
           password: obfsEnabled ? obfsPassword.trim() : "",
@@ -142,7 +146,12 @@ export default function Server() {
   async function generate() {
     const days = Number(validityDays);
     if (!Number.isFinite(days) || days <= 0) throw new Error("Validity must be a positive number of days.");
-    await generateCertMutation.mutateAsync({ sans: [], validityDays: Math.floor(days) });
+    await generateCertMutation.mutateAsync({
+      sans: [],
+      validityDays: Math.floor(days),
+      certPath: tlsCert.trim(),
+      keyPath: tlsKey.trim(),
+    });
   }
 
   if (isLoading) return <Skeleton className="h-[420px]" />;
@@ -171,9 +180,17 @@ export default function Server() {
       <Card>
         <CardHeader>
           <CardTitle>TLS certificate</CardTitle>
-          <CardDescription>Self-signed. Clients pin it, so no domain is needed.</CardDescription>
+          <CardDescription>Self-signed. Clients pin it, so no domain is needed. Paths are saved with the form; Generate writes to them.</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field id="tls_cert" label="Certificate path">
+              <Input id="tls_cert" value={tlsCert} onChange={(e) => setTlsCert(e.target.value)} placeholder="/etc/hysteria/fullchain.pem" spellCheck={false} />
+            </Field>
+            <Field id="tls_key" label="Key path">
+              <Input id="tls_key" value={tlsKey} onChange={(e) => setTlsKey(e.target.value)} placeholder="/etc/hysteria/privkey.pem" spellCheck={false} />
+            </Field>
+          </div>
           <div className="flex flex-col gap-2 rounded-[var(--radius)] border border-border bg-muted-bg/40 p-3">
             {cert?.parseError ? (
               <Badge variant="off">Unreadable: {cert.parseError}</Badge>
@@ -192,7 +209,6 @@ export default function Server() {
                 )}
                 <PinRow label="pinSHA256" value={cert.fingerprintSha256} />
                 <PinRow label="sing-box" value={cert.publicKeySha256} />
-                <p className="font-mono text-xs text-muted">{cert.certPath}</p>
               </>
             ) : (
               <Badge variant="neutral">No certificate yet</Badge>
