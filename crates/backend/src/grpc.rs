@@ -11,6 +11,7 @@ use chrono::{DateTime, TimeZone, Utc};
 use percent_encoding::{utf8_percent_encode, AsciiSet, NON_ALPHANUMERIC};
 use qrcode::render::svg;
 use qrcode::{EcLevel, QrCode};
+use serde_json::json;
 use std::path::Path;
 use tonic::{Request, Response, Status};
 use vpn_common::settings_keys as k;
@@ -177,12 +178,9 @@ impl PanelSvc {
         Ok(())
     }
 
-    /// Build a `hysteria2://` URI that v2rayN / v2rayNG (and the official
-    /// Hysteria client) parse correctly. The address always carries an explicit
-    /// port, the auth/remark/query values are percent-encoded, and obfs and a
-    /// best-effort `insecure` flag are derived from the live core config so the
-    /// link matches what the server actually expects.
-    fn connection_uri(&self, token: &str, username: &str, link_host: &str) -> String {
+    /// Resolve the host/port/SNI/obfs/cert values shared by every client
+    /// representation (URI, sing-box JSON) from panel settings + core config.
+    fn endpoint(&self, link_host: &str) -> Endpoint {
         let sni = Settings::sni(&self.state.pool);
 
         // Pull obfs / port / cert mode from the managed Hysteria config.
@@ -211,7 +209,24 @@ impl PanelSvc {
                 p.to_string()
             }
         };
-        let address = format!("{host}:{port}");
+        let salamander = sc.obfs_type.eq_ignore_ascii_case("salamander");
+        Endpoint {
+            host,
+            port,
+            sni,
+            obfs_password: if salamander { Some(sc.obfs_password.clone()) } else { None },
+            pin_sha256: cert::cert_pin_sha256(&sc.tls_cert),
+            public_key_sha256: cert::cert_public_key_sha256(&sc.tls_cert),
+        }
+    }
+
+    /// Build a `hysteria2://` URI that v2rayN / v2rayNG (and the official
+    /// Hysteria client) parse correctly. The address always carries an explicit
+    /// port, the auth/remark/query values are percent-encoded, and obfs and a
+    /// best-effort `insecure` flag are derived from the live core config so the
+    /// link matches what the server actually expects.
+    fn uri_for(ep: &Endpoint, token: &str, username: &str) -> String {
+        let address = format!("{}:{}", ep.host, ep.port);
 
         // Token is URL-safe base64, but encode it anyway to stay correct if the
         // generator ever changes.
@@ -219,17 +234,17 @@ impl PanelSvc {
         let mut uri = format!("hy2://{auth}@{address}");
 
         let mut params = Vec::new();
-        if !sni.is_empty() {
-            params.push(format!("sni={}", utf8_percent_encode(&sni, URI_COMPONENT)));
+        if !ep.sni.is_empty() {
+            params.push(format!("sni={}", utf8_percent_encode(&ep.sni, URI_COMPONENT)));
         }
         // Salamander obfuscation must be advertised to the client or the
         // handshake fails outright.
-        if sc.obfs_type.eq_ignore_ascii_case("salamander") {
+        if let Some(pw) = &ep.obfs_password {
             params.push("obfs=salamander".to_string());
-            if !sc.obfs_password.is_empty() {
+            if !pw.is_empty() {
                 params.push(format!(
                     "obfs-password={}",
-                    utf8_percent_encode(&sc.obfs_password, URI_COMPONENT)
+                    utf8_percent_encode(pw, URI_COMPONENT)
                 ));
             }
         }
@@ -245,7 +260,7 @@ impl PanelSvc {
         // additional check, not a replacement) — but the panel targets the GUI
         // clients, so optimise for them. Fall back to `insecure=1` only if the
         // cert file can't be read, so a link is never silently un-pinnable.
-        match cert::cert_pin_sha256(&sc.tls_cert) {
+        match &ep.pin_sha256 {
             // The colon-delimited fingerprint is left literal (colons are legal in
             // a query component) to match what v2rayN/v2rayNG emit and expect.
             Some(pin) => params.push(format!("pinSHA256={pin}")),
@@ -259,6 +274,38 @@ impl PanelSvc {
         uri.push('#');
         uri.push_str(&utf8_percent_encode(username, URI_COMPONENT).to_string());
         uri
+    }
+
+    /// sing-box hysteria2 outbound for this user. sing-box ignores `pinSHA256`
+    /// (a whole-cert hash) and, since 1.13, pins by
+    /// `tls.certificate_public_key_sha256` (base64 SPKI hash) instead, so the
+    /// self-signed cert is trusted without `insecure`. Falls back to
+    /// `insecure: true` only when the cert can't be read.
+    fn singbox_outbound(ep: &Endpoint, token: &str, username: &str) -> String {
+        let mut tls = serde_json::Map::new();
+        tls.insert("enabled".into(), json!(true));
+        if !ep.sni.is_empty() {
+            tls.insert("server_name".into(), json!(ep.sni));
+        }
+        match &ep.public_key_sha256 {
+            Some(pin) => {
+                tls.insert("certificate_public_key_sha256".into(), json!([pin]));
+            }
+            None => {
+                tls.insert("insecure".into(), json!(true));
+            }
+        }
+        let mut out = serde_json::Map::new();
+        out.insert("type".into(), json!("hysteria2"));
+        out.insert("tag".into(), json!(username));
+        out.insert("server".into(), json!(ep.host));
+        out.insert("server_port".into(), json!(ep.port.parse::<u16>().unwrap_or(443)));
+        out.insert("password".into(), json!(token));
+        if let Some(pw) = &ep.obfs_password {
+            out.insert("obfs".into(), json!({ "type": "salamander", "password": pw }));
+        }
+        out.insert("tls".into(), serde_json::Value::Object(tls));
+        serde_json::to_string_pretty(&serde_json::Value::Object(out)).unwrap_or_default()
     }
 
     /// Render `uri` as a standalone QR-code SVG for the client apps to scan.
@@ -283,6 +330,17 @@ impl PanelSvc {
             Err(_) => String::new(),
         }
     }
+}
+
+/// Client-facing connection parameters resolved once per request.
+struct Endpoint {
+    host: String,
+    port: String,
+    sni: String,
+    /// `Some` when salamander obfuscation is on (password may be empty).
+    obfs_password: Option<String>,
+    pin_sha256: Option<String>,
+    public_key_sha256: Option<String>,
 }
 
 /// Percent-encode set for URI components: everything but the RFC 3986
@@ -375,6 +433,36 @@ mod uri_tests {
             utf8_percent_encode("a.b-c_d~e", URI_COMPONENT).to_string(),
             "a.b-c_d~e"
         );
+    }
+
+    #[test]
+    fn singbox_outbound_pins_spki_hash() {
+        let ep = Endpoint {
+            host: "1.2.3.4".into(),
+            port: "443".into(),
+            sni: "cdn.example".into(),
+            obfs_password: Some("gawr".into()),
+            pin_sha256: Some("AA:BB".into()),
+            public_key_sha256: Some("c3Bra2hhc2g=".into()),
+        };
+        let v: serde_json::Value =
+            serde_json::from_str(&PanelSvc::singbox_outbound(&ep, "tok", "alice")).unwrap();
+        assert_eq!(v["type"], "hysteria2");
+        assert_eq!(v["server_port"], 443);
+        assert_eq!(v["password"], "tok");
+        assert_eq!(v["obfs"]["type"], "salamander");
+        assert_eq!(v["tls"]["server_name"], "cdn.example");
+        assert_eq!(v["tls"]["certificate_public_key_sha256"][0], "c3Bra2hhc2g=");
+        assert!(v["tls"].get("insecure").is_none());
+
+        let uri = PanelSvc::uri_for(&ep, "tok", "alice");
+        assert!(uri.contains("pinSHA256=AA:BB"));
+        assert!(!uri.contains("insecure"));
+
+        let no_cert = Endpoint { pin_sha256: None, public_key_sha256: None, ..ep };
+        let v: serde_json::Value =
+            serde_json::from_str(&PanelSvc::singbox_outbound(&no_cert, "tok", "alice")).unwrap();
+        assert_eq!(v["tls"]["insecure"], true);
     }
 
     #[test]
@@ -485,14 +573,17 @@ impl PanelService for PanelSvc {
         let mut conn = self.state.pool.get().map_err(db_err)?;
         let u = queries::create_user(&mut conn, new)
             .map_err(|e| Status::already_exists(format!("could not create user: {e}")))?;
-        let uri = self.connection_uri(&token, &u.username, &req.link_host);
+        let ep = self.endpoint(&req.link_host);
+        let uri = Self::uri_for(&ep, &token, &u.username);
         let qr_svg = Self::qr_svg(&uri);
+        let singbox_outbound = Self::singbox_outbound(&ep, &token, &u.username);
         let user = to_proto_user(u, &self.state);
         Ok(Response::new(pb::CreateUserResponse {
             user: Some(user),
             auth_token: token,
             connection_uri: uri,
             qr_svg,
+            singbox_outbound,
         }))
     }
 
@@ -506,14 +597,16 @@ impl PanelService for PanelSvc {
         let mut conn = self.state.pool.get().map_err(db_err)?;
         let u =
             queries::user_by_id(&mut conn, id).map_err(|_| Status::not_found("user not found"))?;
-        let uri = self.connection_uri(&u.token, &u.username, &req.link_host);
+        let ep = self.endpoint(&req.link_host);
+        let uri = Self::uri_for(&ep, &u.token, &u.username);
         let qr_svg = Self::qr_svg(&uri);
-        let (auth_token, connection_uri) = (u.token, uri);
+        let singbox_outbound = Self::singbox_outbound(&ep, &u.token, &u.username);
         Ok(Response::new(pb::UserConfigResponse {
             username: u.username,
-            auth_token,
-            connection_uri,
+            auth_token: u.token,
+            connection_uri: uri,
             qr_svg,
+            singbox_outbound,
         }))
     }
 
@@ -906,6 +999,7 @@ fn cert_summary_to_proto(s: &cert::CertSummary, cert_path: &str, key_path: &str)
         not_before: s.not_before,
         not_after: s.not_after,
         fingerprint_sha256: s.fingerprint_sha256.clone(),
+        public_key_sha256: s.public_key_sha256.clone(),
         expired: s.expired,
         parse_error: s.parse_error.clone(),
     }

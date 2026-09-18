@@ -136,3 +136,18 @@ replaces the binary, and restarts `hysteria.service` for you.
 ```bash
 vpnctl
 ```
+
+---
+
+## Clients
+
+The panel issues two representations of every user's connection, both pinned
+to the server's self-signed certificate so `insecure` is never needed:
+
+- **`hy2://` link / QR** for v2rayN, v2rayNG and the official Hysteria client.
+  The cert is pinned with `pinSHA256` (SHA-256 of the whole certificate).
+- **sing-box outbound JSON** for sing-box 1.13+. sing-box does not read
+  `pinSHA256`; it pins by `tls.certificate_public_key_sha256` (base64 SHA-256 of
+  the certificate's public key), so the panel emits a ready outbound with that
+  value. Both hashes are shown on the Settings → Certificate card. Regenerating
+  the cert invalidates both.

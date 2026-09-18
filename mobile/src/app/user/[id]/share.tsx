@@ -104,6 +104,35 @@ export default function ShareScreen() {
             </Card.Content>
           </Card>
 
+          {!!d.singboxOutbound && (
+            <Card mode="contained">
+              <Card.Content style={styles.linkCard}>
+                <Text variant="labelMedium" style={{ color: theme.colors.onSurfaceVariant }}>
+                  sing-box outbound (1.13+)
+                </Text>
+                <Text variant="bodySmall" selectable style={styles.mono}>
+                  {d.singboxOutbound}
+                </Text>
+                <View style={styles.actions}>
+                  <Button
+                    mode="contained-tonal"
+                    icon="content-copy"
+                    onPress={() => copy("sing-box outbound", d.singboxOutbound)}
+                  >
+                    Copy
+                  </Button>
+                  <Button
+                    mode="text"
+                    icon="share-variant"
+                    onPress={() => Share.share({ message: d.singboxOutbound })}
+                  >
+                    Share
+                  </Button>
+                </View>
+              </Card.Content>
+            </Card>
+          )}
+
           <Card mode="contained">
             <Card.Content style={styles.linkCard}>
               <Text variant="labelMedium" style={{ color: theme.colors.onSurfaceVariant }}>

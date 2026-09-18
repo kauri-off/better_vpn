@@ -241,6 +241,9 @@ export default function Settings() {
                     <p className="break-all font-mono text-xs text-muted">
                       <span className="text-foreground">pinSHA256</span> {cert.fingerprintSha256}
                     </p>
+                    <p className="break-all font-mono text-xs text-muted">
+                      <span className="text-foreground">sing-box</span> {cert.publicKeySha256}
+                    </p>
                     <p className="font-mono text-xs text-muted">{cert.certPath}</p>
                   </>
                 ) : (

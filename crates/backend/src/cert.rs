@@ -4,7 +4,9 @@
 //! self-signed cert — matching the README's manual `openssl … -newkey ed25519`
 //! recipe — and `x509-parser` to inspect an existing cert for the panel UI.
 //! The SHA-256 fingerprint helpers are the single source of the `pinSHA256`
-//! value the panel pins into `hysteria2://` connection links.
+//! value the panel pins into `hysteria2://` connection links, and of the
+//! base64 SPKI hash sing-box (>= 1.13) pins via
+//! `tls.certificate_public_key_sha256`.
 
 use anyhow::{Context, Result};
 use base64::Engine as _;
@@ -22,6 +24,8 @@ pub struct CertSummary {
     pub not_before: i64,
     pub not_after: i64,
     pub fingerprint_sha256: String,
+    /// base64 SHA-256 of the SubjectPublicKeyInfo (sing-box pin format).
+    pub public_key_sha256: String,
     pub expired: bool,
     /// Non-empty when the file is present but couldn't be parsed.
     pub parse_error: String,
@@ -90,6 +94,9 @@ pub fn inspect(cert_path: &str) -> CertSummary {
     };
     if let Some(pin) = cert_pin_sha256(cert_path) {
         summary.fingerprint_sha256 = pin;
+    }
+    if let Some(pin) = cert_public_key_sha256(cert_path) {
+        summary.public_key_sha256 = pin;
     }
 
     match parse_summary(&data) {
@@ -173,6 +180,21 @@ pub fn cert_pin_sha256(cert_path: &str) -> Option<String> {
             .collect::<Vec<_>>()
             .join(":"),
     )
+}
+
+/// base64 SHA-256 of the leaf certificate's SubjectPublicKeyInfo — the value
+/// sing-box >= 1.13 expects in `tls.certificate_public_key_sha256`. This is
+/// what `openssl x509 -pubkey | openssl pkey -pubin -outform der | openssl
+/// dgst -sha256 -binary | base64` prints. Unlike `pinSHA256` (whole-cert hash)
+/// it survives a re-issue with the same key. `None` when unreadable.
+pub fn cert_public_key_sha256(cert_path: &str) -> Option<String> {
+    use x509_parser::prelude::*;
+    let pem = std::fs::read_to_string(cert_path).ok()?;
+    let der = pem_first_cert_der(&pem)?;
+    let (_, cert) = X509Certificate::from_der(&der).ok()?;
+    let spki = cert.public_key().raw;
+    let digest = Sha256::digest(spki);
+    Some(base64::engine::general_purpose::STANDARD.encode(digest))
 }
 
 /// Decode the DER bytes of the first `CERTIFICATE` block in PEM text. Hysteria
@@ -278,6 +300,20 @@ mod tests {
         .unwrap();
 
         let info = inspect(cert_path.to_str().unwrap());
+        let expected = std::process::Command::new("sh")
+            .arg("-c")
+            .arg(format!(
+                "openssl x509 -in {} -pubkey -noout | openssl pkey -pubin -outform der | openssl dgst -sha256 -binary | openssl enc -base64",
+                cert_path.display()
+            ))
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string());
+        if let Some(expected) = expected {
+            assert_eq!(info.public_key_sha256, expected);
+        }
+        assert_eq!(info.public_key_sha256.len(), 44);
         assert!(info.exists);
         assert!(
             info.parse_error.is_empty(),

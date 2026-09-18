@@ -196,7 +196,8 @@ pub fn print_cert(c: &pb::CertInfo) {
         ts(c.not_after),
         if c.expired { "  (EXPIRED)" } else { "" }
     );
-    println!("fingerprint : {}", c.fingerprint_sha256);
+    println!("pinSHA256   : {}", c.fingerprint_sha256);
+    println!("sing-box    : {}  (tls.certificate_public_key_sha256)", c.public_key_sha256);
 }
 
 pub fn print_settings(s: &pb::PanelSettings) {

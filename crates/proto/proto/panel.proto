@@ -141,6 +141,9 @@ message CreateUserResponse {
   string connection_uri = 3;
   // QR code of the connection URI, rendered as a standalone SVG document.
   string qr_svg = 4;
+  // Ready-to-paste sing-box (>= 1.13) hysteria2 outbound JSON, pinned via
+  // tls.certificate_public_key_sha256.
+  string singbox_outbound = 5;
 }
 // Stored connection details for an existing user's share/QR screen.
 message UserConfigResponse {
@@ -151,6 +154,8 @@ message UserConfigResponse {
   string connection_uri = 3;
   // QR code of the connection URI as a standalone SVG.
   string qr_svg = 4;
+  // sing-box (>= 1.13) hysteria2 outbound JSON, see CreateUserResponse.
+  string singbox_outbound = 5;
 }
 message UpdateUserRequest {
   int32 id = 1;
@@ -257,6 +262,9 @@ message CertInfo {
   string fingerprint_sha256 = 8;  // colon-hex SHA-256, == pinSHA256 link value
   bool expired = 9;               // now is outside [not_before, not_after]
   string parse_error = 10;        // non-empty if the file exists but failed to parse
+  // base64 SHA-256 of the SubjectPublicKeyInfo: the value sing-box >= 1.13
+  // pins via `tls.certificate_public_key_sha256` (it does not read pinSHA256).
+  string public_key_sha256 = 11;
 }
 message GenerateCertRequest {
   reserved 1;                     // was common_name; generated certs carry no CN

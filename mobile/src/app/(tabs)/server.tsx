@@ -370,7 +370,18 @@ function CertView() {
                   {d.fingerprintSha256}
                 </Text>
                 <HelperText type="info" visible style={styles.noPad}>
-                  SHA-256 fingerprint — tap to copy. Connection links pin this value.
+                  SHA-256 fingerprint — tap to copy. Connection links pin this value (pinSHA256).
+                </HelperText>
+                <Text
+                  variant="bodySmall"
+                  style={styles.mono}
+                  onPress={() => copyFingerprint(d.publicKeySha256)}
+                >
+                  {d.publicKeySha256}
+                </Text>
+                <HelperText type="info" visible style={styles.noPad}>
+                  Public key SHA-256 — tap to copy. sing-box 1.13+ pins this via
+                  tls.certificate_public_key_sha256.
                 </HelperText>
               </>
             )}

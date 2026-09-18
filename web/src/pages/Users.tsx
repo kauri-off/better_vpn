@@ -114,7 +114,7 @@ export default function Users() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editUser, setEditUser] = useState<VpnUser | null>(null);
   const [created, setCreated] = useState<
-    { uri: string; token: string; qr: string; username?: string; fresh: boolean } | null
+    { uri: string; token: string; qr: string; singbox: string; username?: string; fresh: boolean } | null
   >(null);
   const [confirmDelete, setConfirmDelete] = useState<VpnUser | null>(null);
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
@@ -248,6 +248,7 @@ export default function Users() {
         uri: resp.connectionUri,
         token: resp.authToken,
         qr: resp.qrSvg,
+        singbox: resp.singboxOutbound,
         username: resp.username,
         fresh: false,
       });
@@ -687,7 +688,7 @@ function CreateUserDialog({
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
-  onCreated: (c: { uri: string; token: string; qr: string }) => void;
+  onCreated: (c: { uri: string; token: string; qr: string; singbox: string }) => void;
 }) {
   const [username, setUsername] = useState("");
   const [quotaGb, setQuotaGb] = useState("0");
@@ -718,7 +719,12 @@ function CreateUserDialog({
         enabled: true,
         linkHost: window.location.hostname,
       });
-      onCreated({ uri: resp.connectionUri, token: resp.authToken, qr: resp.qrSvg });
+      onCreated({
+        uri: resp.connectionUri,
+        token: resp.authToken,
+        qr: resp.qrSvg,
+        singbox: resp.singboxOutbound,
+      });
       toast.success("User created");
       setUsername("");
       setQuotaGb("0");
@@ -943,7 +949,14 @@ function ConnectionDialog({
   created,
   onClose,
 }: {
-  created: { uri: string; token: string; qr: string; username?: string; fresh: boolean } | null;
+  created: {
+    uri: string;
+    token: string;
+    qr: string;
+    singbox: string;
+    username?: string;
+    fresh: boolean;
+  } | null;
   onClose: () => void;
 }) {
   return (
@@ -954,7 +967,8 @@ function ConnectionDialog({
             {created?.fresh ? "User created" : `Connection — ${created?.username ?? ""}`}
           </DialogTitle>
           <DialogDescription>
-            Scan the QR code in v2rayNG / v2rayN, or copy the connection URI to set up a client.
+            Scan the QR code in v2rayNG / v2rayN, copy the connection URI, or paste the sing-box
+            outbound (sing-box 1.13+, pinned by certificate public key).
           </DialogDescription>
         </DialogHeader>
         {created?.qr && (
@@ -967,7 +981,27 @@ function ConnectionDialog({
         <div className="break-all rounded-[var(--radius)] border border-border bg-muted-bg p-3 font-mono text-xs">
           {created?.uri}
         </div>
+        {created?.singbox && (
+          <pre className="max-h-48 overflow-auto rounded-[var(--radius)] border border-border bg-muted-bg p-3 font-mono text-xs">
+            {created.singbox}
+          </pre>
+        )}
         <DialogFooter>
+          {created?.singbox && (
+            <Button
+              variant="outline"
+              onClick={async () => {
+                if (await copyText(created.singbox)) {
+                  toast.success("sing-box outbound copied");
+                } else {
+                  toast.error("Couldn't copy — select the JSON and copy manually.");
+                }
+              }}
+            >
+              <Copy className="size-4" />
+              Copy sing-box
+            </Button>
+          )}
           <Button
             onClick={async () => {
               if (!created) return;

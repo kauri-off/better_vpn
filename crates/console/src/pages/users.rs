@@ -253,7 +253,7 @@ fn share(ctx: &mut Ctx, id: i32) {
         ui::pause();
         return;
     }
-    show_connection(&cfg.username, &cfg.auth_token, &cfg.connection_uri);
+    show_connection(&cfg.username, &cfg.auth_token, &cfg.connection_uri, &cfg.singbox_outbound);
 }
 
 fn create(ctx: &mut Ctx) {
@@ -298,12 +298,12 @@ fn create(ctx: &mut Ctx) {
 
     let u = resp.user.unwrap_or_default();
     ui::success(format!("created user #{} '{}'", u.id, u.username));
-    show_connection(&u.username, &resp.auth_token, &resp.connection_uri);
+    show_connection(&u.username, &resp.auth_token, &resp.connection_uri, &resp.singbox_outbound);
     println!("(the token is shown once; store it now)");
 }
 
-/// Print a user's auth token + connection URI and render the URI as a QR code.
-fn show_connection(username: &str, token: &str, uri: &str) {
+/// Print a user's auth token, connection URI (with QR) and sing-box outbound.
+fn show_connection(username: &str, token: &str, uri: &str, singbox: &str) {
     println!("user       : {username}");
     if !token.is_empty() {
         println!("auth token : {token}");
@@ -321,6 +321,9 @@ fn show_connection(username: &str, token: &str, uri: &str) {
             println!("{img}");
         }
         Err(e) => ui::error(format!("could not render QR: {e}")),
+    }
+    if !singbox.is_empty() {
+        println!("sing-box outbound:\n{singbox}");
     }
     ui::pause();
 }
